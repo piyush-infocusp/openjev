@@ -18,6 +18,7 @@ it, why, and the evidence. Results go in `EXPERIMENTS.md` (Optuna trials) and `S
 | 2026-11-19 | A compact PLE table: keep only the rows of token ids that occur in the data, and remap ids | user idea (OJ-085) | Saving the PLE output per token would need ~3.6 TB (18 KB/token × ~200M tokens); a compact table is exact and estimated at ~1.1 GB vs 4.7 GB | todo, size being measured |
 | 2026-11-19 | Multiple Kaggle accounts: not used | Claude | Kaggle allows one account per person; quota evasion risks a ban of the main account | rejected |
 | 2026-11-19 | Fork `~/openjev-xla` (branch `xla`): a backend-agnostic trainer (CUDA + TPU; PyTorch/XLA or JAX after a decision memo) with resumable cross-backend checkpoints, toward a **~50 h** training budget (Kaggle GPU ~30 h + TPU ~20 h per week, chained sessions) | user | T4 alone is 4.5 s/sample and sessions are capped at ~12 h; TPU has native bf16 and much more memory | in progress (Opus agent in the fork) |
+| 2026-11-19 | From round 4: `max_state_tokens` fixed at 1024 (not tuned); validation acceptance uses ±2 standard errors (~2 acc points on 400 records) instead of −1 point | Claude (from the round-3 agent's review) | Changing the state length alters quality and sequence length the same way bs did; −1 point is below the noise of 400 records | planned (round 4) |
 
 ## Measurements behind the decisions
 

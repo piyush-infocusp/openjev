@@ -88,6 +88,7 @@ dimensions:
     idea: >-
       Shorter state truncation = fewer tokens per sample. Trades quality for speed
       (helpsteer3 is cut more), so compare tokens/s too.
+    sample: false   # r4: fixed at the default (1024); changing it alters quality, like bs did
 
   - name: torch_threads
     type: categorical
