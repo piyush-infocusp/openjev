@@ -20,4 +20,11 @@ it, why, and the evidence. Results go in `EXPERIMENTS.md` (Optuna trials) and `S
 
 ## Measurements behind the decisions
 
-- **Compact-PLE vocabulary count:** pending (sonnet job). The distinct token ids per split and source, and the table size, will be written below.
+- **Compact-PLE vocabulary count (2026-11-19, Gemma tokenizer + 7 template tokens, exact `encode`):**
+  - **157,146 distinct ids** in train ∪ val ∪ test (max_state 2048); 157,068 at 1024. Compact fp16 table **2.82 GB** (0.60 of the full 4.70 GB).
+  - About 190M tokens in total (train 161M). Val ids not in train: 861; test ids not in train: 812.
+  - **helpsteer3 alone uses 155,235 ids**; the other sources together add only ~2k (support_tickets 20,945; prm800k 13,483;
+    diplomacy 11,456; clinc150 8,032; banking77 3,433; lichess 364; pokerbench 164).
+  - **Conclusion:** the compact table saves only 40%, because helpsteer3 covers most of the vocabulary. Next step (OJ-085b):
+    a **hot/cold split**. Keep the most frequent ids on the GPU (to be measured: the ids that cover ~99% of token occurrences)
+    and look up the rare ones on the CPU. Still exact.

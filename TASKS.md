@@ -82,6 +82,8 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
   (+ pad + template tokens), keep only those rows of embed_tokens_per_layer (est. 30-60k of 262,144 -> ~1.1 GB
   fp16 vs 4.7 GB) and remap ids for the PLE lookup only. Exact: test that flag logits equal the full-table run.
   Gives PLE-on-GPU speed with PLE-on-CPU memory. Serving keeps the full table (unknown ids -> full table).
+  MEASURED: 157,146 ids -> 2.82 GB (only -40%; helpsteer3 has 155k ids). OJ-085b: hot/cold split - GPU rows for the
+  ids covering ~99% of token occurrences, CPU lookup for the rest; measure the coverage curve first.
 
 ## Done
 
