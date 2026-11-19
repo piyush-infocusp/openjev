@@ -249,3 +249,63 @@ def test_auto_dtype_needs_native_bf16(monkeypatch):
     assert bt.build_args(targs, {"dtype": "fp16"}).dtype == "fp16"
     with pytest.raises(ValueError):
         bt.build_args(targs, {"dtype": "int8"})
+
+
+def test_self_describing_trials(tmp_path):
+    """Attrs + dashboard notes at propose, result appended at ingest, idempotent backfill.
+    Temp study only."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import optuna_loop as ol
+    from optuna_dashboard import get_note
+    db, tj = tmp_path / "s.db", tmp_path / "t.json"
+    ol.main(["--db", str(db), "propose", "--n", "2", "--out", str(tj),
+             "--enqueue-json", '{"bs": 2, "_idea": "sdpa_bool", "_hypothesis": "faster path", '
+                               '"_reference": "https://example.org/x"}'])
+    proposed = json.loads(tj.read_text())
+    assert all("_idea" not in t["params"] for t in proposed) and len(proposed) == 3
+    study = optuna.load_study(study_name=ol.STUDY_NAME, storage=f"sqlite:///{db}")
+    assert study.metric_names == [ol.METRIC_NAME]
+    assert study.user_attrs["kernel"] == ol.KERNEL and study.user_attrs["baseline_s_per_sample"] == 4.5
+    assert "search_space_round_2" in study.user_attrs and "Objective" in get_note(study)
+    by = {t.number: t for t in study.trials}
+    assert by[0].user_attrs["source"] == "baseline" and by[1].user_attrs["source"] == "enqueued"
+    assert by[2].user_attrs["source"] == "tpe" and by[2].user_attrs["idea"] == "TPE exploration"
+    u = by[1].user_attrs
+    assert u["idea"] == "sdpa_bool" and u["hypothesis"] == "faster path" and u["round"] == 2
+    assert u["reference"] == "https://example.org/x" and u["git_commit"]
+    h = ol.handle(study, by[1])
+    note = get_note(h)
+    assert "sdpa_bool" in note and "faster path" in note and "bs=2" in note and "### Result" not in note
+
+    res = [{"trial_number": t["trial_number"], "params": t["params"], "status": "ok",
+            "samples_per_sec": 0.25, "loss_start": 2.0, "loss_guard": 1.5, "loss_end": 1.4,
+            "peak_mem_gb": 7.5,
+            "profile": {"top_cuda": [[f"op{i}", 1.0 + i, 0.1, 3] for i in range(8)]}}
+           for t in proposed]
+    (tmp_path / "r.json").write_text(json.dumps({"meta": {}, "results": res}))
+    ol.main(["--db", str(db), "ingest", str(tmp_path / "r.json")])
+    study = optuna.load_study(study_name=ol.STUDY_NAME, storage=f"sqlite:///{db}")
+    note = get_note(ol.handle(study, {t.number: t for t in study.trials}[1]))
+    assert "### Result" in note and "samples/s: 0.250" in note and "1.12x" in note
+    assert "7.50 GB" in note and "`op4`" in note and "`op5`" not in note
+
+    # backfill: idempotent, keeps states and params
+    before = [(t.number, t.state, t.params) for t in study.trials]
+    ol.main(["--db", str(db), "annotate", "--backfill"])
+    s1 = optuna.load_study(study_name=ol.STUDY_NAME, storage=f"sqlite:///{db}")
+    snap = ([(t.number, t.user_attrs) for t in s1.trials], get_note(s1),
+            [get_note(ol.handle(s1, t)) for t in s1.trials])
+    ol.main(["--db", str(db), "annotate", "--backfill"])
+    s2 = optuna.load_study(study_name=ol.STUDY_NAME, storage=f"sqlite:///{db}")
+    assert snap == ([(t.number, t.user_attrs) for t in s2.trials], get_note(s2),
+                    [get_note(ol.handle(s2, t)) for t in s2.trials])
+    assert before == [(t.number, t.state, t.params) for t in s2.trials]
+    assert s2.trials[0].user_attrs["round"] == 1 and "OLD Prism mask" in get_note(ol.handle(s2, s2.trials[0]))
+    assert s2.trials[2].user_attrs["source"] == "tpe"
+
+    ol.main(["--db", str(db), "annotate", "--trial", "2", "--idea", "manual", "--reference", "r"])
+    s3 = optuna.load_study(study_name=ol.STUDY_NAME, storage=f"sqlite:///{db}")
+    assert s3.trials[2].user_attrs["idea"] == "manual" and "manual" in get_note(ol.handle(s3, s3.trials[2]))
+    out = tmp_path / "E.md"
+    ol.main(["--db", str(db), "report", "--out", str(out)])
+    assert "| # | status | idea | source |" in out.read_text()

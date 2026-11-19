@@ -34,13 +34,17 @@ samples/s as their objective; their profiler table is listed under "Profiles".
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import math
+import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import optuna
 import yaml
+from optuna_dashboard import get_note, save_note
 from optuna.distributions import CategoricalDistribution, FloatDistribution, IntDistribution
 from optuna.trial import TrialState
 
@@ -48,6 +52,16 @@ ROOT = Path(__file__).resolve().parent.parent
 BASELINE_S_PER_SAMPLE = 4.5
 STUDY_NAME = "openjev-speed"
 MANUAL_MARKER = "<!-- manual: kept by report -->"
+KERNEL = "piyushsar/openjev-prism-optuna"
+EXPERIMENTS = ROOT / "docs/speed/EXPERIMENTS.md"
+OBJECTIVE = ("maximize training samples/s of Gemma 4 E2B + Prism mask on Kaggle 2xT4 without quality "
+             "loss; quality guard = loss drop vs round baseline")
+METRIC_NAME = ("train samples/sec (higher=better; Gemma4-E2B+Prism, Kaggle T4; baseline 0.22 = "
+               "4.5 s/sample)")
+META_KEYS = ("idea", "hypothesis", "reference")
+TPE_IDEA = ("TPE exploration", "model-based search over implemented dims")
+BASELINE_IDEA = "round baseline; re-anchors the quality guard"
+BASELINE_HYP = "yaml defaults of this round; the quality guard compares the loss drop of later trials to it"
 
 
 # ---------------------------------------------------------------- search space
@@ -90,9 +104,11 @@ def implemented(dims):
     return [d for d in dims if d["implemented"]]
 
 
-def parse_enqueue(texts, impl) -> list[dict]:
+def parse_enqueue(texts, impl, with_meta=False):
     """--enqueue-json values (an object or a list of objects) -> exact configs: every
-    implemented dimension set, missing ones from the yaml default, values checked."""
+    implemented dimension set, missing ones from the yaml default, values checked.
+    Optional keys _idea / _hypothesis / _reference are removed before the check; with
+    with_meta the result is a list of (config, {idea, hypothesis, reference})."""
     by_name = {d["name"]: d for d in impl}
     out = []
     for text in texts or []:
@@ -100,6 +116,8 @@ def parse_enqueue(texts, impl) -> list[dict]:
         for cfg in obj if isinstance(obj, list) else [obj]:
             if not isinstance(cfg, dict):
                 raise SystemExit(f"--enqueue-json: expected an object, got {cfg!r}")
+            meta = {k: str(cfg[f"_{k}"]) for k in META_KEYS if f"_{k}" in cfg}
+            cfg = {k: v for k, v in cfg.items() if k not in {f"_{m}" for m in META_KEYS}}
             bad = sorted(set(cfg) - set(by_name))
             if bad:
                 raise SystemExit(f"--enqueue-json: {bad} are not implemented dimensions "
@@ -112,7 +130,7 @@ def parse_enqueue(texts, impl) -> list[dict]:
                 if not ok:
                     raise SystemExit(f"--enqueue-json: {name}={v!r} is outside {d.get('choices', d)}")
                 full[name] = v
-            out.append(full)
+            out.append((full, meta) if with_meta else full)
     return out
 
 
@@ -144,6 +162,197 @@ def running_trial(study, number: int):
     return None, None
 
 
+# ---------------------------------------------------------------- self-describing trials
+
+def git_commit() -> str:
+    try:
+        r = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                           capture_output=True, text=True)
+        return r.stdout.strip() or "unknown"
+    except OSError:
+        return "unknown"
+
+
+def find_trial(study, number: int):
+    return next((t for t in study.get_trials(deepcopy=False) if t.number == number), None)
+
+
+def handle(study, ft):
+    """What optuna_dashboard.save_note/get_note need from a trial (works in any state)."""
+    return SimpleNamespace(storage=study._storage, study=study, _trial_id=ft._trial_id)
+
+
+@contextlib.contextmanager
+def writable(study):
+    """Optuna refuses user attrs on finished trials; annotating a finished trial is only
+    metadata, so lift that one check on this storage object for the block."""
+    sts = [study._storage]
+    if hasattr(sts[0], "_backend"):   # _CachedStorage delegates to the RDB backend
+        sts.append(sts[0]._backend)
+    for st in sts:
+        st.check_trial_is_updatable = lambda *a, **k: None
+    try:
+        yield
+    finally:
+        for st in sts:
+            del st.check_trial_is_updatable
+
+
+def set_attrs(study, ft, attrs: dict):
+    with writable(study):
+        for k, v in attrs.items():
+            study._storage.set_trial_user_attr(ft._trial_id, k, v)
+
+
+def space_snapshot(impl) -> str:
+    snap = {}
+    for d in impl:
+        vals = d["choices"] if d["type"] == "categorical" else [d["low"], d["high"]]
+        snap[d["name"]] = {"values": vals, "default": d["default"]}
+        if not d["sample"]:
+            snap[d["name"]]["sampled"] = False
+    return json.dumps(snap, separators=(",", ":"))
+
+
+def round_history(path=None) -> str:
+    """The '## Ideas ...' sections of EXPERIMENTS.md (hand-written part), one level deeper."""
+    try:
+        text = Path(path or EXPERIMENTS).read_text()
+    except OSError:
+        return ""
+    if MANUAL_MARKER in text:
+        text = text[text.index(MANUAL_MARKER):]
+    out, keep = [], False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            keep = line.startswith("## Ideas")
+            if keep:
+                out.append("#" + line)
+            continue
+        if keep:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
+def study_note(rnd: int) -> str:
+    hist = round_history() or "_No round history found in EXPERIMENTS.md._"
+    return f"""## OpenJev training-speed study
+
+### Objective
+
+**{METRIC_NAME}**
+
+- **What is measured:** {OBJECTIVE}. Each trial runs 2 warm-up steps, then a timed loop of real
+  SFT steps on the real data mixture from the same start weights; the value is samples per
+  second of that timed loop.
+- **Quality guard:** the probe loss on a fixed set is measured before training and after the
+  warm-up steps (same optimizer-step count for every trial). The loss drop must be at least the
+  round baseline's drop minus max(0.1, 0.5 x |baseline drop|). A trial that fails the guard,
+  runs out of memory, produces NaN or uses an unsupported kernel is PRUNED, not rewarded.
+- **Baseline:** {BASELINE_S_PER_SAMPLE} s/sample (v7/v8) = {1 / BASELINE_S_PER_SAMPLE:.2f} samples/s.
+- **Reading the speedup:** speedup = samples/s x {BASELINE_S_PER_SAMPLE} (above 1.0x is faster than
+  v7/v8). `vs base` in EXPERIMENTS.md is against the measured baseline trial of the same round
+  (the bench does one optimizer step per micro-batch, so it is not exactly v8).
+
+Kernel: `{KERNEL}`. Current round: {rnd}.
+
+### How to read the trials
+
+- Each trial has a note (idea, hypothesis, reference, params, result) and user attrs
+  `source` (baseline | enqueued | tpe), `round`, `git_commit`, `idea`, `hypothesis`, `reference`.
+- Value = samples/s (higher is better). COMPLETE = ran and passed the guard; PRUNED = OOM, NaN,
+  unsupported kernel or failed quality guard (`reason` attr); FAIL = error or no result;
+  RUNNING = proposed, not ingested yet.
+- Compare trials only within a round: every round has its own baseline (`is_baseline`), and the
+  quality guard (loss drop after the warm-up steps) is against that baseline.
+- Round 1 was measured under the OLD Prism mask (pre-OJ-080) and emulated bf16.
+- `search_space_round_<N>` (study attrs) is the snapshot of the implemented dimensions.
+
+### Round history
+
+{hist}
+
+### Links
+
+- [SPEED_LOG.md](docs/speed/SPEED_LOG.md)
+- [EXPERIMENTS.md](docs/speed/EXPERIMENTS.md)
+"""
+
+
+def set_study_meta(study, impl, rnd: int):
+    study.set_metric_names([METRIC_NAME])
+    study.set_user_attr("objective", OBJECTIVE)
+    study.set_user_attr("baseline_s_per_sample", BASELINE_S_PER_SAMPLE)
+    study.set_user_attr("kernel", KERNEL)
+    study.set_user_attr(f"search_space_round_{rnd}", space_snapshot(impl))
+    save_note(study, study_note(rnd))
+
+
+def link(ref: str) -> str:
+    return " ".join(f"<{w}>" if w.startswith("http") else w for w in ref.split(" "))
+
+
+def trial_note(number: int, attrs: dict, params: dict, extra: str = "") -> str:
+    ps = " ".join(f"{k}={v}" for k, v in params.items()) or "(none)"
+    L = [f"## Trial {number}: {attrs.get('idea') or '(no idea recorded)'}", "",
+         f"- source: **{attrs.get('source', '?')}** | round: {attrs.get('round', '?')} | "
+         f"commit: `{attrs.get('git_commit', '?')}`",
+         f"- hypothesis: {attrs.get('hypothesis') or '-'}",
+         f"- reference: {link(attrs['reference']) if attrs.get('reference') else '-'}",
+         f"- params: `{ps}`"]
+    if extra:
+        L += ["", extra]
+    return "\n".join(L) + "\n"
+
+
+RESULT_MARK = "\n### Result\n"
+
+
+def result_md(state: str, u: dict) -> str:
+    sps = u.get("samples_per_sec")
+    ok = isinstance(sps, (int, float)) and sps > 0
+    L = [f"- status: {state}" + (f" ({u['status']})" if u.get("status") else "")]
+    if u.get("reason"):
+        L.append(f"- reason: {u['reason']}")
+    if ok:
+        L.append(f"- samples/s: {sps:.3f} | s/sample: {1 / sps:.2f} | speedup vs "
+                 f"{BASELINE_S_PER_SAMPLE}: {sps * BASELINE_S_PER_SAMPLE:.2f}x")
+    if u.get("peak_mem_gb") is not None:
+        L.append(f"- peak memory: {u['peak_mem_gb']:.2f} GB")
+    if u.get("error"):
+        L.append(f"- error: `{str(u['error']).replace(chr(10), ' ')[:200]}`")
+    p = u.get("profile")
+    if isinstance(p, dict):
+        for key, title in (("top_cuda", "self CUDA"), ("top_cpu", "self CPU")):
+            rows = (p.get(key) or [])[:5]
+            if rows:
+                L.append(f"- top-5 profile ops by {title}: " + "; ".join(
+                    f"`{r[0]}` {r[1]} ms ({pct(r[2])})" for r in rows))
+    return RESULT_MARK.lstrip("\n") + "\n".join(L) + "\n"
+
+
+def write_trial_note(study, ft, extra: str = "", new_attrs=None):
+    """(Re)write the trial note from its attrs (+ new_attrs: the cached trial is stale after a
+    write to a finished trial); add the result section when it has finished."""
+    ft = find_trial(study, ft.number)
+    u = {**ft.user_attrs, **(new_attrs or {})}
+    note = trial_note(ft.number, u, ft.params, extra)
+    if ft.state not in (TrialState.RUNNING, TrialState.WAITING):
+        note += "\n" + result_md(ft.state.name, u)
+    save_note(handle(study, ft), note)
+
+
+def append_result(study, number: int):
+    """Ingest: append the result to the trial note (replaces an earlier result section)."""
+    ft = find_trial(study, number)
+    h = handle(study, ft)
+    old = get_note(h)
+    if not old:
+        old = trial_note(number, ft.user_attrs, ft.params)
+    old = old.split(RESULT_MARK.strip("\n"))[0].rstrip("\n") + "\n"
+    save_note(h, old + "\n" + result_md(ft.state.name, ft.user_attrs))
+
+
 # ---------------------------------------------------------------- propose
 
 def cmd_propose(a):
@@ -161,7 +370,7 @@ def cmd_propose(a):
     impl = implemented(dims)
     if not impl:
         raise SystemExit("no implemented dimensions in the search space")
-    queued = parse_enqueue(a.enqueue_json, impl)
+    queued = parse_enqueue(a.enqueue_json, impl, with_meta=True)
     dists = {d["name"]: distribution(d) for d in impl}
     sampled = {d["name"] for d in impl if d["sample"]}
     defaults = {d["name"]: d["default"] for d in impl}
@@ -169,14 +378,21 @@ def cmd_propose(a):
     # Trial 0 is the baseline. Re-enqueue it if every baseline so far failed or was abandoned.
     alive = (TrialState.COMPLETE, TrialState.RUNNING, TrialState.WAITING)
     rnd = load_round(a.space)
+    set_study_meta(study, impl, rnd)
     need_base = not any(t.user_attrs.get("is_baseline") and t.state in alive
                         and trial_round(t) == rnd for t in study.trials)
     if need_base:
         study.enqueue_trial({n: v for n, v in defaults.items() if n in sampled},
-                            user_attrs={"is_baseline": True, "round": rnd})
-    for cfg in queued:   # a sample: false dim at its default stays out of the Optuna params
+                            user_attrs={"is_baseline": True, "round": rnd, "source": "baseline",
+                                        "idea": BASELINE_IDEA, "hypothesis": BASELINE_HYP,
+                                        "reference": ""})
+    for cfg, meta in queued:   # a sample: false dim at its default stays out of the Optuna params
         study.enqueue_trial({k: v for k, v in cfg.items() if k in sampled or v != defaults[k]},
-                            user_attrs={"enqueued": True, "round": rnd})
+                            user_attrs={"enqueued": True, "round": rnd, "source": "enqueued",
+                                        "idea": meta.get("idea", "enqueued config"),
+                                        "hypothesis": meta.get("hypothesis", ""),
+                                        "reference": meta.get("reference", "")})
+    commit = git_commit()
     out = []
     # The baseline (when it is enqueued) counts toward --n; the --enqueue-json configs do not.
     for _ in range(max(a.n, int(need_base)) + len(queued)):
@@ -184,11 +400,18 @@ def cmd_propose(a):
         fixed = getattr(trial, "_fixed_params", {}) or {}
         if "round" not in trial.user_attrs:
             trial.set_user_attr("round", rnd)
+        if "source" not in trial.user_attrs:
+            for k, v in (("source", "tpe"), ("idea", TPE_IDEA[0]), ("hypothesis", TPE_IDEA[1]),
+                         ("reference", "")):
+                trial.set_user_attr(k, v)
+        trial.set_user_attr("git_commit", commit)
         params = {}
         for name, dist in dists.items():
             if name in sampled or name in fixed:
                 params[name] = dist_suggest(trial, name, dist)
             # sample: false and not enqueued -> not an Optuna param; bench uses the default
+        save_note(trial, trial_note(trial.number, {**trial.user_attrs, "git_commit": commit},
+                                    params))
         out.append({"trial_number": trial.number, "params": params, "reload_keys": reload_keys})
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=1) + "\n")
@@ -293,6 +516,7 @@ def cmd_ingest(a):
             study.tell(n, state=TrialState.PRUNED)
         else:
             study.tell(n, state=TrialState.FAIL)
+        append_result(study, n)
         told.add(n)
         print(f"trial {n}: {status} samples/s={sps} {why}".rstrip())
     # Proposed but missing from this results file: the kernel died or timed out.
@@ -301,7 +525,71 @@ def cmd_ingest(a):
             if t.number not in told:
                 optuna.trial.Trial(study, t._trial_id).set_user_attr("reason", "no result")
                 study.tell(t.number, state=TrialState.FAIL)
+                append_result(study, t.number)
                 print(f"trial {t.number}: FAIL (no result)")
+
+
+# ---------------------------------------------------------------- annotate
+
+R1_CAVEAT = ("> Round 1: measured under the OLD Prism mask (pre-OJ-080) and emulated bf16; "
+             "numbers are not comparable to round 2.")
+PROFILE_URL = "https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html"
+SDPA_URL = "https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html"
+_TPE = ("tpe", *TPE_IDEA, "")
+# trial -> (round, source, idea, hypothesis, reference)
+BACKFILL = {0: (1, "baseline", BASELINE_IDEA, BASELINE_HYP, "")}
+BACKFILL.update({n: (1, *_TPE) for n in range(1, 6)})
+BACKFILL.update({
+    6: (2, "baseline", BASELINE_IDEA, BASELINE_HYP, ""),
+    7: (2, "enqueued", "profile of the round-1 best config in fp16",
+        "shows the top ops", f"OJ-082; {PROFILE_URL}"),
+    8: (2, "enqueued", "sdpa_bool",
+        "a boolean mask may enable a faster SDPA path", SDPA_URL),
+    9: (2, "enqueued", "chunked_math", "lower peak memory, O(chunk*T)", ""),
+    10: (2, "enqueued", "chunked_math with no grad-ckpt",
+         "the lower memory may allow dropping ckpt, about 1.3x compute saved",
+         "Chen et al. 2016, arXiv:1604.06174"),
+    11: (2, "enqueued", "flex", "block-sparse mask kernel", "Dong et al. 2024, arXiv:2412.05496"),
+    12: (2, "enqueued", "bf16_emulated vs t7 fp16",
+         "OJ-081: measures the cost of emulated bf16 on sm75", "OJ-081"),
+})
+BACKFILL.update({n: (2, *_TPE) for n in range(13, 20)})
+
+
+def annotate_trial(study, number, **attrs):
+    ft = find_trial(study, number)
+    if ft is None:
+        print(f"trial {number}: not in the study; skipped")
+        return
+    set_attrs(study, ft, attrs)
+    rnd = int(attrs.get("round", ft.user_attrs.get("round", 1)))
+    write_trial_note(study, ft, R1_CAVEAT if rnd == 1 and number in BACKFILL else "", attrs)
+
+
+def cmd_annotate(a):
+    study = open_study(a.db, a.seed)
+    if a.backfill:
+        dims = load_space(a.space)
+        impl = implemented(dims)
+        rnd = load_round(a.space)
+        set_study_meta(study, impl, rnd)
+        if rnd >= 2 and "search_space_round_1" not in study.user_attrs:
+            old = [dict(d, default=1) if d["name"] == "ple_cpu" else d for d in impl
+                   if d["name"] not in ("attn_backend", "profile", "dtype")]
+            study.set_user_attr("search_space_round_1", space_snapshot(old))
+        for n, (r, src, idea, hyp, ref) in sorted(BACKFILL.items()):
+            annotate_trial(study, n, round=r, source=src, idea=idea, hypothesis=hyp, reference=ref)
+            print(f"annotated trial {n}: {src} r{r} {idea}")
+    if a.trial is not None:
+        given = {k: getattr(a, k) for k in META_KEYS if getattr(a, k) is not None}
+        if a.source:
+            given["source"] = a.source
+        if not given:
+            raise SystemExit("annotate --trial N needs --idea / --hypothesis / --reference / --source")
+        annotate_trial(study, a.trial, **given)
+        print(f"annotated trial {a.trial}: {given}")
+    if not a.backfill and a.trial is None:
+        raise SystemExit("annotate: pass --backfill and/or --trial N")
 
 
 # ---------------------------------------------------------------- report
@@ -411,9 +699,9 @@ def cmd_report(a):
     L += ["## All trials", "",
           "`speedup` is vs 4.5 s/sample; `vs base` is vs the measured baseline trial of the "
           "current round (the bench does one optimizer step per micro-batch, so it is not exactly v8).", "",
-          "| # | status | " + " | ".join(names) + " | samples/s | s/sample | speedup | vs base | "
+          "| # | status | idea | source | " + " | ".join(names) + " | samples/s | s/sample | speedup | vs base | "
           "tokens/s | peak GB | probe loss start→guard→end | note |",
-          "|" + "---|" * (len(names) + 10)]
+          "|" + "---|" * (len(names) + 12)]
     for t in trials:
         u = t.user_attrs
         sps = t.value if t.state == TrialState.COMPLETE else u.get("samples_per_sec")
@@ -424,7 +712,9 @@ def cmd_report(a):
         note = str(note).replace("|", "/").replace("\n", " ")[:120]
         loss = (f"{fmt(u.get('loss_start'))}→{fmt(u.get('loss_guard'))}→{fmt(u.get('loss_end'))}"
                 if u.get("loss_start") is not None else "")
-        L.append("| " + " | ".join([str(t.number), status, *[fmt(t.params.get(n)) for n in names],
+        idea = str(u.get("idea", "")).replace("|", "/").replace("\n", " ")[:70]
+        L.append("| " + " | ".join([str(t.number), status, idea, str(u.get("source", "")),
+                                    *[fmt(t.params.get(n)) for n in names],
                                     fmt(sps), fmt(1 / sps, 2) if sps else "",
                                     f"{sps * BASELINE_S_PER_SAMPLE:.2f}x" if sps else "",
                                     f"{sps / base_sps:.2f}x" if sps and base_sps else "",
@@ -484,6 +774,14 @@ def main(argv=None):
     p.add_argument("--fail-missing", action=argparse.BooleanOptionalAction, default=True,
                    help="mark RUNNING trials with no result as FAIL")
     p.set_defaults(fn=cmd_ingest)
+    p = sub.add_parser("annotate", help="set idea/hypothesis/reference attrs + notes on trials")
+    p.add_argument("--backfill", action="store_true", help="annotate the known trials (idempotent)")
+    p.add_argument("--trial", type=int)
+    p.add_argument("--idea")
+    p.add_argument("--hypothesis")
+    p.add_argument("--reference")
+    p.add_argument("--source", choices=["baseline", "enqueued", "tpe"])
+    p.set_defaults(fn=cmd_annotate)
     p = sub.add_parser("report", help="write docs/speed/EXPERIMENTS.md")
     p.add_argument("--out", type=Path, default=ROOT / "docs/speed/EXPERIMENTS.md")
     p.set_defaults(fn=cmd_report)
