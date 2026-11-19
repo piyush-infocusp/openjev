@@ -1,0 +1,1094 @@
+<title>Tensor Course</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Tensor Course: nine short lessons, from one number to a whole transformer layer, using real tensors. */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --head:#eef1f5; --ink:#151a22; --muted:#5b6575; --line:#d9dee6; --line2:#e6eaf0;
+  --accent:#0f6b63; --accent-soft:#e2f2ef; --warn:#a15c00; --ok:#1b7a3a; --bad:#b3261e;
+  --pos:58 120 190; --neg:214 100 40; --nosee:#e3e7ee;
+  --d-b:#7a4bd1; --d-t:#0f6b63; --d-s:#2a7f2a; --d-h:#c0392b; --d-n:#b05c00; --d-k:#8a6d00;
+  --d-d:#1f5fbf; --d-i:#a12c7b; --d-v:#555f70; --d-o:#00798c;
+  --k-in:#e8eef9; --k-norm:#eef5e6; --k-lin:#fdf0e0; --k-re:#f1e9fa; --k-attn:#fbe8ee; --k-mlp:#e3f4f2; --k-res:#eceff3; --k-out:#fff3c9;
+  --see:#0f6b63; --self:#7fbfb7;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1318; --panel:#161b22; --head:#1d242d; --ink:#e6e9ee; --muted:#9aa4b2; --line:#2a313b; --line2:#222932;
+  --accent:#4fd1c0; --accent-soft:#12302d; --warn:#f0b35a; --ok:#6fd48f; --bad:#ff8a80;
+  --pos:90 160 255; --neg:255 150 90; --nosee:#1d242d;
+  --d-b:#b597ff; --d-t:#4fd1c0; --d-s:#7fd17f; --d-h:#ff8a7a; --d-n:#ffb55c; --d-k:#e8cf55;
+  --d-d:#7fb2ff; --d-i:#f08ad0; --d-v:#a6b0c0; --d-o:#5fd6e8;
+  --k-in:#1b2740; --k-norm:#1d2c1e; --k-lin:#38281a; --k-re:#2b2040; --k-attn:#3a1f2a; --k-mlp:#143432; --k-res:#232a33; --k-out:#3b3416;
+  --see:#4fd1c0; --self:#2f7f76; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1318; --panel:#161b22; --head:#1d242d; --ink:#e6e9ee; --muted:#9aa4b2; --line:#2a313b; --line2:#222932;
+  --accent:#4fd1c0; --accent-soft:#12302d; --warn:#f0b35a; --ok:#6fd48f; --bad:#ff8a80;
+  --pos:90 160 255; --neg:255 150 90; --nosee:#1d242d;
+  --d-b:#b597ff; --d-t:#4fd1c0; --d-s:#7fd17f; --d-h:#ff8a7a; --d-n:#ffb55c; --d-k:#e8cf55;
+  --d-d:#7fb2ff; --d-i:#f08ad0; --d-v:#a6b0c0; --d-o:#5fd6e8;
+  --k-in:#1b2740; --k-norm:#1d2c1e; --k-lin:#38281a; --k-re:#2b2040; --k-attn:#3a1f2a; --k-mlp:#143432; --k-res:#232a33; --k-out:#3b3416;
+  --see:#4fd1c0; --self:#2f7f76; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6;margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-bottom:48px;overflow-x:hidden}
+.app{max-width:1240px;margin:0 auto}
+h1,h2,h3,h4{margin:0;text-wrap:balance;line-height:1.2}
+h2{font-size:26px;letter-spacing:-.01em}
+h3{font-size:18px}
+h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+p{margin:0;max-width:70ch}
+.mono,code{font-family:var(--f-mono)}
+code{font-size:.9em;background:var(--head);padding:1px 5px;border-radius:5px}
+.muted{color:var(--muted)}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* axis colors */
+.dim{font-weight:600;font-family:var(--f-mono)}
+.dim-b{color:var(--d-b)}.dim-t{color:var(--d-t)}.dim-s{color:var(--d-s)}.dim-h{color:var(--d-h)}.dim-n{color:var(--d-n)}.dim-k{color:var(--d-k)}
+.dim-d{color:var(--d-d)}.dim-i{color:var(--d-i)}.dim-v{color:var(--d-v)}.dim-o{color:var(--d-o)}
+/* top bar */
+.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 0;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.brand{font-weight:700;font-size:17px;letter-spacing:-.01em}
+.prog{flex:1 1 180px;display:flex;flex-direction:column;gap:4px;min-width:140px}
+.prog span{font-size:13px;color:var(--muted)}
+.bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 12px;font-size:14px;cursor:pointer}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+.btn.small{padding:4px 9px;font-size:13px}
+#navBtn{display:none}
+.shell{display:grid;grid-template-columns:210px minmax(0,1fr);gap:24px;align-items:start;padding-top:22px}
+nav.nav{position:sticky;top:76px}
+nav.nav ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+nav.nav button{width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:8px;cursor:pointer;display:grid;grid-template-columns:22px 1fr;gap:8px;font-size:14px;line-height:1.35}
+nav.nav button .num{font-family:var(--f-mono);color:var(--muted);font-size:13px}
+nav.nav button:hover{background:var(--head)}
+nav.nav button[aria-current="true"]{background:var(--accent-soft);color:var(--ink);font-weight:600}
+nav.nav button.done .num::after{content:"\2713";color:var(--accent);margin-left:1px}
+main.main{display:flex;flex-direction:column;gap:20px;min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.legend .lg{display:inline-flex;gap:5px;align-items:baseline;white-space:nowrap}
+.legend .ttl{color:var(--muted);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+.lhead{display:flex;flex-direction:column;gap:8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.intro p+p{margin-top:8px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tabs button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:5px 13px;font-size:14px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+.einbox{display:flex;flex-direction:column;gap:8px}
+.einsum{font-family:var(--f-mono);font-size:17px;padding:12px 14px;border-radius:8px;background:var(--bg);border:1px solid var(--line);overflow-x:auto;white-space:nowrap}
+.einsum.formula{font-size:14px}
+.einnote{font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 16px}
+.tiny{font-family:var(--f-mono);font-size:13px;padding:12px 14px;border-radius:8px;background:var(--accent-soft);border:1px solid var(--line);display:flex;flex-direction:column;gap:3px;overflow-x:auto;white-space:pre}
+.tinyttl{font-family:var(--f-body);font-weight:600;font-size:13px;white-space:normal;color:var(--accent)}
+.vgrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+.vcard{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0;background:var(--panel)}
+.v3{position:sticky;top:76px}
+.sheetcard{display:flex;flex-direction:column;gap:6px}
+.sheetcard+.sheetcard{border-top:1px dashed var(--line);padding-top:12px}
+.shhead{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;font-size:14px}
+.shhead b{font-family:var(--f-mono)}
+.shhead .shape{font-family:var(--f-mono);font-size:12.5px;color:var(--muted)}
+.shdesc{font-size:13px;color:var(--muted)}
+.shctl{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted)}
+.shctl label{display:inline-flex;gap:5px;align-items:center}
+.shctl select{font:inherit;font-family:var(--f-mono);font-size:12.5px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:1px 3px}
+.sheetwrap{overflow:auto;max-height:290px;border:1px solid var(--line);border-radius:8px;background:var(--panel);max-width:100%}
+table.sh{border-collapse:separate;border-spacing:0;font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+table.sh th{background:var(--head);color:var(--muted);font-weight:400;padding:2px 6px;white-space:nowrap;text-align:center;line-height:1.25;position:sticky;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+table.sh thead th{top:0;z-index:2}
+table.sh tbody th{left:0;z-index:1;text-align:left;min-width:54px}
+table.sh thead th.corner{left:0;z-index:3;text-align:left;font-size:11.5px}
+table.sh th small{display:block;font-size:10.5px;opacity:.85;font-weight:400;font-family:var(--f-body)}
+table.sh th.hl{color:var(--ink);background:var(--accent-soft)}
+td.gc{min-width:56px;height:28px;text-align:right;padding:2px 7px;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);cursor:pointer;color:var(--ink)}
+td.gc.ninf{color:var(--muted)}
+td.gc.mk{box-shadow:inset 0 0 0 2px var(--warn)}
+td.gc.sel{box-shadow:inset 0 0 0 2px var(--accent);font-weight:700}
+td.gc.sel.mk{box-shadow:inset 0 0 0 2px var(--accent),inset 0 0 0 4px var(--warn)}
+.cellinfo{font-size:13px;font-family:var(--f-mono);color:var(--muted);overflow-wrap:anywhere;min-height:1.5em}
+.cellinfo b{color:var(--ink)}
+.scalebar{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.scalebar i{flex:0 0 110px;height:9px;border-radius:5px;border:1px solid var(--line);background:linear-gradient(90deg,rgb(var(--neg)),var(--panel),rgb(var(--pos)))}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:3px 11px;font-size:13px;font-family:var(--f-mono);cursor:pointer}
+.chips button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.cvwrap{border:1px solid var(--line);border-radius:8px;background:var(--bg);overflow:hidden}
+canvas.cv{display:block;width:100%;height:300px;cursor:grab;touch-action:pan-y}
+canvas.cv:active{cursor:grabbing}
+.tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px;color:var(--muted)}
+.tools input[type=range]{accent-color:var(--accent);width:110px}
+.cap{font-size:13px}
+.check{border:1px solid var(--accent);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--panel)}
+.check h3{color:var(--accent)}
+.calc{display:flex;flex-direction:column;gap:5px;font-size:14px;overflow-wrap:anywhere}
+.calc .what{font-weight:600}
+.calc .line{font-family:var(--f-mono);font-size:13px}
+.calc details{display:inline}
+.calc summary{cursor:pointer;color:var(--accent);font-family:var(--f-body);font-size:12.5px}
+.calc .tm{display:inline-block}
+.result{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:10px 12px;border-radius:8px;font-family:var(--f-mono);font-size:14px;background:var(--bg);border:1px solid var(--line)}
+.result.ok{border-color:var(--ok)}.result.bad{border-color:var(--bad)}
+.result .verdict{font-family:var(--f-body);font-weight:700}
+.result.ok .verdict{color:var(--ok)}.result.bad .verdict{color:var(--bad)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.note{font-size:14px;color:var(--muted);border-left:3px solid var(--line);padding-left:10px}
+.nav2{display:flex;justify-content:space-between;gap:10px;padding-top:6px}
+/* graph */
+.ggrid{display:grid;grid-template-columns:minmax(0,572px) minmax(0,1fr);gap:16px;align-items:start}
+.gcol{display:flex;flex-direction:column;gap:8px;min-width:0}
+.gscroll{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:auto;max-width:100%}
+svg.graph{display:block;width:100%;min-width:540px;height:auto}
+.gnode{cursor:pointer}
+.gnode rect{stroke:var(--line);stroke-width:1.2}
+.gnode text{fill:var(--ink);font-family:var(--f-mono);font-size:11px;pointer-events:none}
+.gnode text.t1{font-size:12px;font-weight:600}
+.gnode text.t2{fill:var(--muted);font-size:10px}
+.gnode.k-in rect{fill:var(--k-in)}.gnode.k-norm rect{fill:var(--k-norm)}.gnode.k-lin rect{fill:var(--k-lin)}.gnode.k-re rect{fill:var(--k-re)}
+.gnode.k-attn rect{fill:var(--k-attn)}.gnode.k-mlp rect{fill:var(--k-mlp)}.gnode.k-res rect{fill:var(--k-res)}.gnode.k-out rect{fill:var(--k-out)}
+.gnode.k-ghost rect{fill:var(--panel);stroke-dasharray:4 3}
+.gnode:hover rect{stroke:var(--accent)}
+.gnode.sel rect{stroke:var(--accent);stroke-width:3}
+.gnode.par rect{stroke:var(--warn);stroke-width:2.2}
+.gnode:focus-visible rect{stroke:var(--accent);stroke-width:3}
+path.edge{fill:none;stroke:var(--muted);stroke-width:1.3;opacity:.55;marker-end:url(#arr)}
+path.edge.hi{stroke:var(--warn);stroke-width:2.4;opacity:1;marker-end:url(#arrh)}
+path.edge.out{stroke:var(--accent);opacity:.9;marker-end:url(#arro)}
+.gkey{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted)}
+.gkey i{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);margin-right:5px;vertical-align:-1px}
+.gdetail{position:sticky;top:76px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.gdetail .vgrid{grid-template-columns:minmax(0,1fr)}
+.gdetail .v3{position:static}
+.pchips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.pchips button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 10px;font-family:var(--f-mono);font-size:12.5px;cursor:pointer}
+.pchips button:hover{border-color:var(--accent)}
+.pchips button.w{border-style:dashed}
+/* tables for the bridge */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;max-width:100%}
+table.cmp{border-collapse:collapse;font-size:13.5px;width:100%;min-width:620px}
+table.cmp th,table.cmp td{padding:6px 10px;border-bottom:1px solid var(--line2);text-align:left;white-space:nowrap}
+table.cmp th{background:var(--head);color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+table.cmp td.m{font-family:var(--f-mono);font-size:12.5px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.fact{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);font-size:14px}
+.fact b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px}
+/* mask lab (from the first version) */
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font-size:13px;padding:6px 10px;border:0;background:transparent;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--panel)}
+.labgrid{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:20px;align-items:start}
+.maskbox{overflow-x:auto;max-width:100%}
+table.mask{border-collapse:separate;border-spacing:2px;font-family:var(--f-mono);font-size:11px}
+table.mask th{font-weight:400;color:var(--muted);padding:0 3px;white-space:nowrap}
+table.mask th.col{writing-mode:vertical-rl;transform:rotate(180deg);height:74px;text-align:left}
+table.mask th.hl,table.mask th.hlc{color:var(--accent);font-weight:600}
+.mcell{width:22px;height:22px;border-radius:4px;background:var(--nosee);border:0;padding:0;cursor:pointer;display:block}
+.mcell.on{background:var(--see)}
+.mcell.self{background:var(--self)}
+.mcell[aria-pressed="true"]{outline:2px solid var(--warn);outline-offset:1px}
+.pos{color:var(--d-t)}
+.explain{font-size:14.5px;min-height:3em}
+.mchips{display:flex;flex-wrap:wrap;gap:6px}
+.mchip{font-family:var(--f-mono);font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+.gqa{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-width:460px}
+.gqa div{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:var(--f-mono);font-size:13px;text-align:center;background:var(--bg)}
+.gqa div.on{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:14px;padding-top:14px}
+  #navBtn{display:inline-block}
+  nav.nav{display:none;position:static;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px}
+  nav.nav.open{display:block}
+  .vgrid,.ggrid,.labgrid{grid-template-columns:minmax(0,1fr)}
+  .v3,.gdetail{position:static}
+  .gscroll{max-height:68vh}
+  h2{font-size:22px}
+  .card{padding:14px}
+}
+@media (max-width:480px){
+  body{font-size:15.5px}
+  .einsum{font-size:15px}
+}
+@media (prefers-reduced-motion:no-preference){.bar i{transition:width .25s}}
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <span class="brand">Tensor Course</span>
+    <div class="prog"><span id="progTxt"></span><div class="bar"><i id="progBar"></i></div></div>
+    <button class="btn" id="navBtn" type="button" aria-expanded="false" aria-controls="nav">Lessons</button>
+    <button class="btn" id="themeBtn" type="button" aria-label="Change color theme">Theme: auto</button>
+  </header>
+  <div class="shell">
+    <nav class="nav" id="nav" aria-label="Lessons"></nav>
+    <main class="main" id="main"></main>
+  </div>
+</div>
+
+<script id="data">const DATA={"meta":{"model":"trl-internal-testing/tiny-Qwen3ForCausalLM","text":"Refund my card please","tokens":["Ref","und"," my"," card"," please"],"ids":[3945,1241,847,3701,4486],"parameters":2435688,"config":{"hidden":8,"heads":4,"kv_heads":2,"head_dim":16,"mlp":32,"layers":2,"vocab":151936,"eps":1e-06,"rope_theta":1000000,"act":"silu","scale":0.25},"top5":{"ids":[104521,120172,40834,58764,59680],"tokens":["房产","爰"," tecn",".Encoding"," Growing"],"logits":[0.03382,0.03285,0.03283,0.03189,0.03155]},"note":"Activations carry b=1. Weights use PyTorch layout [out,in]. mask uses -1e9 for minus infinity."},"tensors":{"ids":{"shape":[1,5],"axes":["b","t"],"kind":"activation","desc":"token ids","decimals":5,"data":[3945.0,1241.0,847.0,3701.0,4486.0]},"x0":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"embedding lookup","decimals":7,"data":[-0.002121,0.0016098,0.0116577,-0.0132446,-0.0088501,-0.0305176,-0.0106201,0.0027771,0.0136719,0.0114746,0.0341797,-0.0126953,-0.0114746,0.0217285,0.0222168,0.0164795,0.0,0.0407715,-0.001564,0.0,0.0349121,-0.0233154,-0.0375977,-0.0197754,-0.0537109,0.0039978,0.0180664,0.0114136,0.0119019,0.0153809,0.0186768,-0.019165,-0.007782,0.0021057,0.0108032,0.032959,0.0390625,-0.0062561,0.0510254,-0.0035553]},"norm1":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"input RMSNorm","decimals":5,"data":[-0.15719,0.1193,0.86396,-0.98157,-0.65589,-2.26168,-0.78706,0.20581,0.70309,0.5901,1.75773,-0.65287,-0.5901,1.11742,1.14253,0.84748,0.0,1.59309,-0.06111,0.0,1.36415,-0.91102,-1.46908,-0.7727,-2.27482,0.16932,0.76517,0.4834,0.50408,0.65143,0.79102,-0.8117,-0.29795,0.08062,0.41363,1.26192,1.49561,-0.23953,1.95364,-0.13612]},"q_lin":{"shape":[1,5,64],"axes":["b","t","nd"],"kind":"activation","desc":"query projection, flat","decimals":5,"data":[-0.26752,0.15741,0.00198,0.42605,0.46182,-0.78501,0.08905,-0.69306,-0.40319,0.79684,0.45509,-0.05492,-0.0989,-0.55922,-0.39304,-0.32399,0.41522,0.54052,0.20616,-0.43935,-0.39205,0.15173,0.45229,-0.03459,0.80979,0.73777,-0.39454,-0.05825,0.03842,-0.51709,0.29113,-0.52065,0.21993,0.20034,-0.49188,-0.33877,-0.2346,-0.2955,0.05904,0.3805,0.50724,-0.72145,0.39721,-0.09696,-0.93682,-0.08803,0.18588,-0.37644,-0.95485,-0.05601,0.0785,0.05606,-0.451,0.09541,0.34059,0.53602,0.59154,-0.47696,-0.0623,-0.07306,-0.08696,-0.39082,0.34985,-0.97123,0.27351,0.46058,-0.23673,-0.29732,-0.07942,0.11983,0.16612,-0.41286,0.1726,0.53239,0.73913,-0.34407,0.14579,0.37737,-0.12741,-0.77466,0.52632,-0.71961,0.89784,-0.3884,-0.71869,0.40919,-0.11733,-0.42974,-1.02792,-0.07599,-0.52879,-0.14718,-0.48045,0.4477,-0.1409,0.02353,-0.59983,-0.5258,-0.25308,-0.00036,0.46171,-0.37165,-0.3073,-0.15453,-1.0291,0.04093,1.03491,-0.0466,-0.12209,-0.69025,-0.22288,-0.28105,0.6618,0.03225,-0.16972,0.41206,-0.16748,-0.23433,-0.43929,-0.44296,0.45636,0.63822,-0.82245,0.03799,0.50203,-0.34311,0.4816,-0.07286,-0.21348,-0.3787,0.34958,-0.84454,0.04292,-0.41952,-0.32715,0.10785,-0.21176,-0.32814,-0.01879,0.50809,-0.4368,0.17339,0.18569,0.51017,0.24602,-0.16063,-0.36689,-0.13277,0.00055,-0.05142,0.38206,0.33446,0.81967,0.45082,0.54086,0.05729,0.38836,-0.11544,-0.10718,-0.27472,0.24632,0.33932,-0.8329,-0.30357,0.58819,-0.16925,-0.67408,-0.32659,0.08226,-0.35755,-0.58954,-0.77078,-1.06017,0.50487,-0.16024,0.86759,0.10765,0.09363,1.09502,-0.18171,-0.48425,-0.02247,0.6483,0.1667,-0.54475,-0.57704,0.85957,0.32447,-0.68076,0.23264,-0.66782,0.16354,0.44921,-0.77323,0.46417,-0.39358,-0.68204,0.07828,0.45702,-0.51097,-0.5937,-0.61148,-0.27252,-0.27373,-0.42158,-0.08002,-0.31191,0.70143,-0.17231,-0.34388,0.34739,0.06426,0.4837,0.45822,-0.29195,-0.21852,0.0108,-0.15179,0.54473,-0.05502,0.15885,-0.17467,0.15031,0.78572,0.16903,-0.17736,0.74907,0.1738,0.06908,0.51994,-0.25529,0.40431,-0.4135,0.09833,-0.29008,-0.18749,0.22451,-0.22673,-0.50866,0.31535,1.03049,0.72883,0.11357,0.45228,0.04937,-0.68096,0.10984,-0.49759,-0.16641,0.41842,-0.70211,0.19871,0.57572,0.21934,-0.47028,0.56701,0.36166,-0.85907,0.41916,0.03991,0.0059,0.28983,0.4049,-0.46657,0.29985,-0.30472,-0.551,0.03786,0.18697,0.72426,0.48697,0.52825,-0.89159,-0.51455,-0.09974,0.51937,0.57149,0.15993,0.00324,-0.06386,-0.28229,0.16065,0.14754,0.2037,1.03671,0.28185,0.00843,0.87279,0.13015,0.30198,0.42591,-0.2428,0.3743,0.83932,0.21952,0.51622,-0.52102,0.53274,-0.32291,-0.01429,-0.0408,0.33812,-0.23597,-0.23493,1.06291,1.04758,-0.20359,0.6693,0.51212,-0.3202,0.25055,-0.37659,0.0974,0.10677,0.3835,-0.98255,-0.08836,0.08487,-0.07551,0.80056],"split":{"nd":["n",16]}},"k_lin":{"shape":[1,5,32],"axes":["b","s","kd"],"kind":"activation","desc":"key projection, flat","decimals":5,"data":[-0.34899,0.23087,-0.23791,-0.03428,-0.46659,-0.20995,-0.82344,1.31067,0.23771,0.51335,0.29343,-0.97964,0.24606,1.29525,-0.70712,-0.38637,-0.19625,0.92866,1.15314,0.5053,0.58551,0.27267,0.20812,0.5663,-0.28674,-0.42455,-0.29579,-0.36852,1.45965,0.45582,-0.62343,1.20694,0.31484,0.63493,-0.14147,0.63302,-0.12202,0.08916,0.26893,-0.01521,-0.69439,0.65878,0.39875,0.89131,-0.53473,-0.58277,-0.15952,0.73183,-0.58673,-0.62694,-0.26595,0.08139,0.08642,-1.0783,-0.84987,-0.21177,-0.80141,-0.64877,-0.36578,0.57042,-0.2752,0.91413,0.25233,-0.05631,-1.32374,-0.07941,0.93089,0.51139,0.92764,-0.03501,0.29019,0.50234,0.63822,0.16847,0.09996,0.21347,0.26382,0.18965,-0.67978,0.45498,0.73507,1.04572,1.06825,0.00973,0.19116,-0.29774,0.0542,-0.03964,0.08379,0.16934,-0.93044,-0.09726,1.17009,-0.63773,0.45711,-0.27807,0.58763,-0.79983,0.43772,-0.02595,-0.3985,0.1646,0.62828,-0.59866,-0.0277,-0.31381,0.67247,1.10204,-0.35888,-0.40571,-0.3004,0.23835,0.48108,-1.15388,0.3242,-0.10883,-1.03378,0.00889,0.67842,-0.15974,-0.37935,0.49486,-0.42437,0.28191,0.20808,-0.6417,0.08646,0.14866,-0.54524,-0.20623,0.47679,-0.20264,-1.10439,-0.55691,0.83731,-0.88133,-0.28329,-1.10236,0.38212,0.95797,0.00133,-1.10908,-0.38052,1.1119,0.73474,-0.46839,0.17554,-1.14576,-1.439,0.34853,0.96318,-0.03692,-0.14728,0.25692,-0.19034,0.34374,-0.57083,-0.04507,0.09142,-0.49787],"split":{"kd":["k",16]}},"v_lin":{"shape":[1,5,32],"axes":["b","s","kd"],"kind":"activation","desc":"value projection, flat","decimals":5,"data":[0.14849,0.47154,-0.23364,1.34969,0.42666,-0.85634,-0.18773,0.72792,-0.48686,0.19857,-0.07661,0.29193,-0.81672,0.34455,0.06996,-0.48421,-1.27641,-0.41515,-0.63938,1.01499,0.29605,1.34645,-0.40694,0.40781,0.33188,0.71536,0.82591,0.52976,-0.10509,0.33779,0.00695,0.69364,1.21499,0.21275,0.90284,-0.39018,-0.22476,0.25066,0.3542,-0.45302,1.36192,0.76174,-0.11059,-1.06632,0.82396,1.16545,0.24578,0.9244,0.08504,-0.77155,0.80539,0.04066,0.60572,-0.58814,-0.27224,-0.52281,-0.96289,-0.76471,-0.14728,0.07189,0.37381,-0.26646,-0.42424,-0.34556,-0.38163,-0.47676,-0.27318,0.28983,0.23882,-0.52506,-0.64807,0.24192,-0.15602,0.36103,0.48324,1.23117,-1.17952,-0.08279,0.3725,-1.01104,-0.42459,0.77222,-0.62393,0.57079,-0.41696,1.24181,-0.77814,-0.65174,0.55805,0.12446,0.2842,-0.14928,0.39574,0.06606,0.00968,0.83583,0.1754,0.74627,-0.65258,-0.7194,-0.96854,-0.74555,0.90921,0.25239,-0.05777,-0.09321,-0.99116,-0.06954,0.00508,0.39136,1.58997,-0.49872,0.48518,-0.27793,-0.03568,-1.70514,0.18968,-1.12422,-0.4341,0.96547,0.72341,-0.07181,0.88435,-0.33123,0.58951,-0.53354,0.29561,-0.83473,0.43139,1.35118,-0.61584,-0.77566,0.00581,-0.07969,-0.71685,-0.08991,-0.27321,-0.78217,-0.09355,-0.04442,0.37578,0.15033,1.13048,-0.20058,0.712,-0.45088,0.30013,-1.48189,0.01745,-1.13922,0.38271,0.78697,0.35614,-0.81094,0.69385,-0.58796,1.14176,0.70667,-0.44074,-0.50012],"split":{"kd":["k",16]}},"q_heads":{"shape":[1,4,5,16],"axes":["b","n","t","d"],"kind":"activation","desc":"queries split into heads","decimals":5,"data":[-0.26752,0.15741,0.00198,0.42605,0.46182,-0.78501,0.08905,-0.69306,-0.40319,0.79684,0.45509,-0.05492,-0.0989,-0.55922,-0.39304,-0.32399,0.27351,0.46058,-0.23673,-0.29732,-0.07942,0.11983,0.16612,-0.41286,0.1726,0.53239,0.73913,-0.34407,0.14579,0.37737,-0.12741,-0.77466,-0.21348,-0.3787,0.34958,-0.84454,0.04292,-0.41952,-0.32715,0.10785,-0.21176,-0.32814,-0.01879,0.50809,-0.4368,0.17339,0.18569,0.51017,0.44921,-0.77323,0.46417,-0.39358,-0.68204,0.07828,0.45702,-0.51097,-0.5937,-0.61148,-0.27252,-0.27373,-0.42158,-0.08002,-0.31191,0.70143,0.36166,-0.85907,0.41916,0.03991,0.0059,0.28983,0.4049,-0.46657,0.29985,-0.30472,-0.551,0.03786,0.18697,0.72426,0.48697,0.52825,0.41522,0.54052,0.20616,-0.43935,-0.39205,0.15173,0.45229,-0.03459,0.80979,0.73777,-0.39454,-0.05825,0.03842,-0.51709,0.29113,-0.52065,0.52632,-0.71961,0.89784,-0.3884,-0.71869,0.40919,-0.11733,-0.42974,-1.02792,-0.07599,-0.52879,-0.14718,-0.48045,0.4477,-0.1409,0.02353,0.24602,-0.16063,-0.36689,-0.13277,0.00055,-0.05142,0.38206,0.33446,0.81967,0.45082,0.54086,0.05729,0.38836,-0.11544,-0.10718,-0.27472,-0.17231,-0.34388,0.34739,0.06426,0.4837,0.45822,-0.29195,-0.21852,0.0108,-0.15179,0.54473,-0.05502,0.15885,-0.17467,0.15031,0.78572,-0.89159,-0.51455,-0.09974,0.51937,0.57149,0.15993,0.00324,-0.06386,-0.28229,0.16065,0.14754,0.2037,1.03671,0.28185,0.00843,0.87279,0.21993,0.20034,-0.49188,-0.33877,-0.2346,-0.2955,0.05904,0.3805,0.50724,-0.72145,0.39721,-0.09696,-0.93682,-0.08803,0.18588,-0.37644,-0.59983,-0.5258,-0.25308,-0.00036,0.46171,-0.37165,-0.3073,-0.15453,-1.0291,0.04093,1.03491,-0.0466,-0.12209,-0.69025,-0.22288,-0.28105,0.24632,0.33932,-0.8329,-0.30357,0.58819,-0.16925,-0.67408,-0.32659,0.08226,-0.35755,-0.58954,-0.77078,-1.06017,0.50487,-0.16024,0.86759,0.16903,-0.17736,0.74907,0.1738,0.06908,0.51994,-0.25529,0.40431,-0.4135,0.09833,-0.29008,-0.18749,0.22451,-0.22673,-0.50866,0.31535,0.13015,0.30198,0.42591,-0.2428,0.3743,0.83932,0.21952,0.51622,-0.52102,0.53274,-0.32291,-0.01429,-0.0408,0.33812,-0.23597,-0.23493,-0.95485,-0.05601,0.0785,0.05606,-0.451,0.09541,0.34059,0.53602,0.59154,-0.47696,-0.0623,-0.07306,-0.08696,-0.39082,0.34985,-0.97123,0.6618,0.03225,-0.16972,0.41206,-0.16748,-0.23433,-0.43929,-0.44296,0.45636,0.63822,-0.82245,0.03799,0.50203,-0.34311,0.4816,-0.07286,0.10765,0.09363,1.09502,-0.18171,-0.48425,-0.02247,0.6483,0.1667,-0.54475,-0.57704,0.85957,0.32447,-0.68076,0.23264,-0.66782,0.16354,1.03049,0.72883,0.11357,0.45228,0.04937,-0.68096,0.10984,-0.49759,-0.16641,0.41842,-0.70211,0.19871,0.57572,0.21934,-0.47028,0.56701,1.06291,1.04758,-0.20359,0.6693,0.51212,-0.3202,0.25055,-0.37659,0.0974,0.10677,0.3835,-0.98255,-0.08836,0.08487,-0.07551,0.80056]},"k_heads":{"shape":[1,2,5,16],"axes":["b","k","s","d"],"kind":"activation","desc":"keys split into heads","decimals":5,"data":[-0.34899,0.23087,-0.23791,-0.03428,-0.46659,-0.20995,-0.82344,1.31067,0.23771,0.51335,0.29343,-0.97964,0.24606,1.29525,-0.70712,-0.38637,0.31484,0.63493,-0.14147,0.63302,-0.12202,0.08916,0.26893,-0.01521,-0.69439,0.65878,0.39875,0.89131,-0.53473,-0.58277,-0.15952,0.73183,-1.32374,-0.07941,0.93089,0.51139,0.92764,-0.03501,0.29019,0.50234,0.63822,0.16847,0.09996,0.21347,0.26382,0.18965,-0.67978,0.45498,0.58763,-0.79983,0.43772,-0.02595,-0.3985,0.1646,0.62828,-0.59866,-0.0277,-0.31381,0.67247,1.10204,-0.35888,-0.40571,-0.3004,0.23835,-0.54524,-0.20623,0.47679,-0.20264,-1.10439,-0.55691,0.83731,-0.88133,-0.28329,-1.10236,0.38212,0.95797,0.00133,-1.10908,-0.38052,1.1119,-0.19625,0.92866,1.15314,0.5053,0.58551,0.27267,0.20812,0.5663,-0.28674,-0.42455,-0.29579,-0.36852,1.45965,0.45582,-0.62343,1.20694,-0.58673,-0.62694,-0.26595,0.08139,0.08642,-1.0783,-0.84987,-0.21177,-0.80141,-0.64877,-0.36578,0.57042,-0.2752,0.91413,0.25233,-0.05631,0.73507,1.04572,1.06825,0.00973,0.19116,-0.29774,0.0542,-0.03964,0.08379,0.16934,-0.93044,-0.09726,1.17009,-0.63773,0.45711,-0.27807,0.48108,-1.15388,0.3242,-0.10883,-1.03378,0.00889,0.67842,-0.15974,-0.37935,0.49486,-0.42437,0.28191,0.20808,-0.6417,0.08646,0.14866,0.73474,-0.46839,0.17554,-1.14576,-1.439,0.34853,0.96318,-0.03692,-0.14728,0.25692,-0.19034,0.34374,-0.57083,-0.04507,0.09142,-0.49787]},"v_heads":{"shape":[1,2,5,16],"axes":["b","k","s","d"],"kind":"activation","desc":"values split into heads","decimals":5,"data":[0.14849,0.47154,-0.23364,1.34969,0.42666,-0.85634,-0.18773,0.72792,-0.48686,0.19857,-0.07661,0.29193,-0.81672,0.34455,0.06996,-0.48421,1.21499,0.21275,0.90284,-0.39018,-0.22476,0.25066,0.3542,-0.45302,1.36192,0.76174,-0.11059,-1.06632,0.82396,1.16545,0.24578,0.9244,-0.38163,-0.47676,-0.27318,0.28983,0.23882,-0.52506,-0.64807,0.24192,-0.15602,0.36103,0.48324,1.23117,-1.17952,-0.08279,0.3725,-1.01104,0.1754,0.74627,-0.65258,-0.7194,-0.96854,-0.74555,0.90921,0.25239,-0.05777,-0.09321,-0.99116,-0.06954,0.00508,0.39136,1.58997,-0.49872,0.43139,1.35118,-0.61584,-0.77566,0.00581,-0.07969,-0.71685,-0.08991,-0.27321,-0.78217,-0.09355,-0.04442,0.37578,0.15033,1.13048,-0.20058,-1.27641,-0.41515,-0.63938,1.01499,0.29605,1.34645,-0.40694,0.40781,0.33188,0.71536,0.82591,0.52976,-0.10509,0.33779,0.00695,0.69364,0.08504,-0.77155,0.80539,0.04066,0.60572,-0.58814,-0.27224,-0.52281,-0.96289,-0.76471,-0.14728,0.07189,0.37381,-0.26646,-0.42424,-0.34556,-0.42459,0.77222,-0.62393,0.57079,-0.41696,1.24181,-0.77814,-0.65174,0.55805,0.12446,0.2842,-0.14928,0.39574,0.06606,0.00968,0.83583,0.48518,-0.27793,-0.03568,-1.70514,0.18968,-1.12422,-0.4341,0.96547,0.72341,-0.07181,0.88435,-0.33123,0.58951,-0.53354,0.29561,-0.83473,0.712,-0.45088,0.30013,-1.48189,0.01745,-1.13922,0.38271,0.78697,0.35614,-0.81094,0.69385,-0.58796,1.14176,0.70667,-0.44074,-0.50012]},"q_norm":{"shape":[1,4,5,16],"axes":["b","n","t","d"],"kind":"activation","desc":"q_norm (RMSNorm over d)","decimals":5,"data":[-0.59957,0.35279,0.00443,0.95488,1.03505,-1.7594,0.19958,-1.5533,-0.90365,1.78591,1.01996,-0.1231,-0.22165,-1.25334,-0.88089,-0.72614,0.70502,1.18723,-0.61023,-0.7664,-0.20471,0.30887,0.42821,-1.06421,0.4449,1.37232,1.90525,-0.88689,0.37579,0.97273,-0.32843,-1.99683,-0.56958,-1.01041,0.93271,-2.25331,0.11452,-1.11932,-0.87287,0.28774,-0.56499,-0.87551,-0.05014,1.35564,-1.16542,0.46262,0.49543,1.36118,0.92662,-1.59499,0.95746,-0.81187,-1.40689,0.16147,0.94272,-1.054,-1.22465,-1.26133,-0.56213,-0.56463,-0.86961,-0.16505,-0.6434,1.44688,0.82493,-1.95951,0.95609,0.09103,0.01346,0.66108,0.92356,-1.06422,0.68396,-0.69505,-1.25682,0.08635,0.42647,1.65202,1.11075,1.20492,0.94846,1.23469,0.47093,-1.00358,-0.89554,0.34658,1.03315,-0.07902,1.84976,1.68525,-0.90124,-0.13307,0.08776,-1.18117,0.66502,-1.1893,0.99804,-1.36458,1.70254,-0.73651,-1.36283,0.77594,-0.2225,-0.8149,-1.94922,-0.1441,-1.00273,-0.27909,-0.91106,0.84896,-0.26719,0.04462,0.71001,-0.46358,-1.05883,-0.38318,0.00158,-0.1484,1.10259,0.96524,2.36552,1.30104,1.56089,0.16535,1.12079,-0.33314,-0.3093,-0.79283,-0.50426,-1.00634,1.0166,0.18804,1.41552,1.34095,-0.85437,-0.63947,0.03162,-0.44421,1.5941,-0.16101,0.46487,-0.51116,0.43986,2.29935,-1.83423,-1.05857,-0.20519,1.06848,1.17569,0.32903,0.00667,-0.13138,-0.58075,0.3305,0.30353,0.41906,2.13277,0.57983,0.01734,1.79554,0.53122,0.48389,-1.18808,-0.81827,-0.56666,-0.71375,0.1426,0.91906,1.2252,-1.7426,0.95941,-0.2342,-2.26281,-0.21263,0.44897,-0.90924,-1.21125,-1.06175,-0.51104,-0.00072,0.93233,-0.75047,-0.62053,-0.31203,-2.07807,0.08264,2.08979,-0.0941,-0.24653,-1.39383,-0.45006,-0.56752,0.43498,0.59921,-1.47081,-0.53607,1.03867,-0.29888,-1.19035,-0.57672,0.14527,-0.6314,-1.04107,-1.36112,-1.87215,0.89154,-0.28296,1.53207,0.48857,-0.51266,2.16518,0.50238,0.19968,1.50288,-0.73791,1.16865,-1.1952,0.28421,-0.83847,-0.54194,0.64893,-0.65537,-1.47027,0.91151,0.33645,0.78063,1.10099,-0.62765,0.96758,2.16968,0.56747,1.33445,-1.34685,1.37715,-0.83473,-0.03693,-0.10547,0.87405,-0.61,-0.6073,-2.08594,-0.12236,0.1715,0.12247,-0.98524,0.20843,0.74405,1.17097,1.29227,-1.04196,-0.1361,-0.15959,-0.18998,-0.85377,0.76427,-2.12173,1.52576,0.07434,-0.39128,0.94999,-0.38613,-0.54024,-1.01276,-1.02123,1.05213,1.47139,-1.89613,0.08758,1.15741,-0.79104,1.11031,-0.16798,0.20528,0.17855,2.08819,-0.34653,-0.92346,-0.04284,1.23629,0.31789,-1.03884,-1.10042,1.6392,0.61877,-1.2982,0.44365,-1.27352,0.31187,2.01279,1.42357,0.22184,0.88341,0.09642,-1.33007,0.21455,-0.97192,-0.32503,0.81728,-1.37139,0.38813,1.12452,0.42842,-0.91857,1.10751,1.88617,1.85897,-0.36129,1.18769,0.90878,-0.56821,0.4446,-0.66827,0.17283,0.18948,0.68054,-1.74358,-0.1568,0.15061,-0.13399,1.42063]},"k_norm":{"shape":[1,2,5,16],"axes":["b","k","s","d"],"kind":"activation","desc":"k_norm (RMSNorm over d)","decimals":5,"data":[-0.54157,0.35828,-0.36919,-0.0532,-0.72407,-0.32581,-1.27785,2.03395,0.36888,0.79663,0.45537,-1.52025,0.38185,2.01003,-1.09733,-0.59959,0.62389,1.25818,-0.28035,1.25439,-0.24179,0.17669,0.53291,-0.03014,-1.376,1.30544,0.79016,1.76623,-1.05964,-1.15483,-0.31611,1.45021,-2.28901,-0.13732,1.60969,0.88429,1.60408,-0.06055,0.5018,0.86865,1.10361,0.29132,0.17285,0.36913,0.45619,0.32795,-1.17547,0.78675,1.13054,-1.53878,0.84213,-0.04992,-0.76667,0.31667,1.20875,-1.15175,-0.0533,-0.60373,1.29376,2.1202,-0.69044,-0.78054,-0.57793,0.45856,-0.7443,-0.28152,0.65085,-0.27662,-1.50758,-0.76023,1.143,-1.20309,-0.38672,-1.50481,0.52162,1.30771,0.00181,-1.51398,-0.51944,1.51783,-0.27865,1.31856,1.63728,0.71744,0.83133,0.38715,0.2955,0.80406,-0.40712,-0.60279,-0.41998,-0.52324,2.07247,0.64719,-0.88518,1.71367,-1.02404,-1.09422,-0.46417,0.14205,0.15083,-1.88197,-1.48329,-0.3696,-1.39872,-1.13232,-0.63841,0.99556,-0.48031,1.59544,0.4404,-0.09827,1.21278,1.72531,1.76249,0.01606,0.31539,-0.49124,0.08943,-0.0654,0.13824,0.2794,-1.53511,-0.16047,1.93051,-1.05218,0.75417,-0.45879,0.92081,-2.20856,0.62054,-0.2083,-1.97868,0.01701,1.29851,-0.30574,-0.72609,0.94718,-0.81226,0.53958,0.39826,-1.22824,0.16549,0.28454,1.19483,-0.76169,0.28546,-1.86323,-2.34008,0.56678,1.56631,-0.06004,-0.23951,0.4178,-0.30953,0.55899,-0.92827,-0.07329,0.14867,-0.80963]},"q_rope":{"shape":[1,4,5,16],"axes":["b","n","t","d"],"kind":"activation","desc":"queries after RoPE","decimals":5,"data":[-0.59957,0.35279,0.00443,0.95488,1.03505,-1.7594,0.19958,-1.5533,-0.90365,1.78591,1.01996,-0.1231,-0.22165,-1.25334,-0.88089,-0.72614,0.00655,0.92576,-0.67016,-0.7614,-0.20508,0.3087,0.42822,-1.0642,0.83363,1.56069,1.885,-0.89119,0.37558,0.97279,-0.32841,-1.99683,0.75078,-0.64232,0.93401,-2.26841,0.11685,-1.11948,-0.87291,0.28773,-0.2828,-1.17255,0.00891,1.33021,-1.16518,0.46222,0.49538,1.36118,-0.74452,-0.73192,1.00641,-0.80223,-1.40427,0.16156,0.94278,-1.05403,1.34316,-1.89717,-0.46891,-0.57825,-0.87383,-0.16497,-0.64331,1.44686,-0.02159,-1.0306,1.10701,0.08906,0.01176,0.65991,0.92342,-1.06425,-1.07137,-1.80573,-1.12616,0.08837,0.42652,1.65249,1.11087,1.20489,0.94846,1.23469,0.47093,-1.00358,-0.89554,0.34658,1.03315,-0.07902,1.84976,1.68525,-0.90124,-0.13307,0.08776,-1.18117,0.66502,-1.1893,2.17946,-1.31757,1.73339,-0.73493,-1.36192,0.77579,-0.22249,-0.8149,-0.21335,-0.38321,-0.9484,-0.28323,-0.91242,0.8491,-0.26719,0.04462,-2.44643,-0.8876,-1.15537,-0.38502,-0.00066,-0.14828,1.10261,0.96525,-0.33879,1.0582,1.49084,0.16103,1.12079,-0.33319,-0.30923,-0.79282,0.49475,-0.6406,0.86103,0.19073,1.41411,1.34123,-0.85441,-0.63951,-0.10246,-0.89424,1.68324,-0.15781,0.46912,-0.51044,0.43978,2.29934,0.75942,-1.01763,-0.24184,1.05878,1.16715,0.32861,0.00667,-0.13142,1.76775,-0.4407,0.27522,0.44298,2.13746,0.58006,0.01734,1.79554,0.53122,0.48389,-1.18808,-0.81827,-0.56666,-0.71375,0.1426,0.91906,1.2252,-1.7426,0.95941,-0.2342,-2.26281,-0.21263,0.44897,-0.90924,1.0942,-1.05962,-0.57686,-0.00019,0.93257,-0.75022,-0.62052,-0.31203,-2.14202,-0.10647,2.07259,-0.09411,-0.2456,-1.39396,-0.45008,-0.56752,-0.3131,0.78156,-1.40207,-0.52073,1.04242,-0.2992,-1.19033,-0.57674,0.33507,-0.38324,-1.13195,-1.36706,-1.87007,0.89144,-0.28304,1.53207,-0.31501,-0.58595,2.23487,0.51145,0.19773,1.50323,-0.73777,1.16863,1.25219,-0.01599,-0.62961,-0.53339,0.64953,-0.65456,-1.47034,0.91153,-1.23922,-0.30771,1.1975,-0.62666,0.96799,2.16906,0.56755,1.33446,0.62574,1.55281,-0.68917,-0.05104,-0.1016,0.87559,-0.60993,-0.60727,-2.08594,-0.12236,0.1715,0.12247,-0.98524,0.20843,0.74405,1.17097,1.29227,-1.04196,-0.1361,-0.15959,-0.18998,-0.85377,0.76427,-2.12173,-0.06096,-0.18711,-0.33114,0.94948,-0.38728,-0.5401,-1.0128,-1.02123,1.85235,1.46134,-1.90755,0.09292,1.15702,-0.79114,1.11028,-0.16798,0.85919,0.55055,1.98041,-0.35346,-0.92086,-0.043,1.23637,0.31788,0.61897,-0.96938,1.7679,0.61483,-1.30005,0.44363,-1.27344,0.31188,-1.94678,0.81014,0.35075,0.87674,0.09305,-1.3303,0.21464,-0.97194,0.60582,1.42765,-1.34421,0.40298,1.12481,0.42771,-0.91855,1.10749,-1.10208,1.28449,-0.44425,1.22661,0.9094,-0.56831,0.44462,-0.6683,-1.54043,1.35712,0.62953,-1.71643,-0.15316,0.15021,-0.13394,1.42062]},"k_rope":{"shape":[1,2,5,16],"axes":["b","k","s","d"],"kind":"activation","desc":"keys after RoPE","decimals":5,"data":[-0.54157,0.35828,-0.36919,-0.0532,-0.72407,-0.32581,-1.27785,2.03395,0.36888,0.79663,0.45537,-1.52025,0.38185,2.01003,-1.09733,-0.59959,1.49496,1.00742,-0.30519,1.24444,-0.24073,0.17689,0.53292,-0.03015,-0.21847,1.50742,0.7809,1.77326,-1.05988,-1.1548,-0.31609,1.45021,-0.05095,-0.23017,1.59555,0.88008,1.60317,-0.06066,0.50187,0.86864,-2.54066,0.22528,0.27424,0.37905,0.4594,0.32792,-1.17544,0.78676,-1.1117,-1.01794,0.71579,-0.08568,-0.76459,0.31709,1.2088,-1.15176,0.21231,-1.30236,1.36771,2.11906,-0.69273,-0.78037,-0.57782,0.45854,0.19384,0.76913,0.57985,-0.30597,-1.50758,-0.75915,1.14306,-1.20313,0.81606,-1.32369,0.59956,1.30116,-0.00422,-1.51452,-0.5193,1.5178,-0.27865,1.31856,1.63728,0.71744,0.83133,0.38715,0.2955,0.80406,-0.40712,-0.60279,-0.41998,-0.52324,2.07247,0.64719,-0.88518,1.71367,0.6237,-0.87666,-0.44376,0.13645,0.15131,-1.88226,-1.48331,-0.3696,-1.61743,-1.30802,-0.65277,0.99634,-0.48016,1.59511,0.44035,-0.09827,-0.6304,1.52005,1.85599,0.01787,0.31153,-0.49087,0.08938,-0.0654,1.04525,0.86267,-1.42065,-0.16028,1.93114,-1.05235,0.75418,-0.45879,-0.80912,-2.38333,0.69469,-0.21738,-1.97987,0.01766,1.2985,-0.30575,0.84877,-0.30757,-0.74982,0.53599,0.39232,-1.22823,0.16562,0.28453,-0.96226,-0.84974,0.32223,-1.87533,-2.33635,0.56683,1.56629,-0.06002,-0.7477,-0.18077,-0.27104,0.51694,-0.93763,-0.07288,0.14887,-0.80963]},"scores":{"shape":[1,4,5,5],"axes":["b","n","t","s"],"kind":"activation","desc":"attention scores (Q Kᵀ · d^-1/2)","decimals":5,"data":[-0.66321,1.15355,1.04908,0.20847,0.08553,1.34316,-0.4219,-1.32263,-0.5693,-0.83694,-0.70307,-0.03851,0.18412,0.98341,1.09699,-0.93737,-0.8454,-1.08651,2.12473,2.45486,-1.31925,-1.20855,1.00517,0.87423,0.33453,-0.41944,0.65789,-2.03829,-0.78475,0.56999,-0.41338,-0.19497,-0.11052,0.21992,0.28744,0.94552,-0.72045,0.31519,0.80818,-0.65328,-1.23681,0.6316,1.16654,0.93352,0.65585,-0.33288,0.22481,0.17479,0.11084,0.41328,-2.13002,0.37541,-1.65774,-0.32428,0.81871,-1.1166,1.09136,-1.77349,-0.83517,-0.54013,-0.18839,0.9378,-1.11055,-1.70746,-1.11204,2.15966,-1.73994,1.33434,0.93527,-0.70755,0.82912,-1.94975,0.85174,0.07719,0.65898,-0.95113,-1.21348,0.94559,1.64129,1.67509,-0.50236,-0.41039,2.2876,0.99445,-1.1015,0.45921,-0.60445,-0.77295,0.35657,1.08665,1.5559,-0.33525,2.03029,0.36089,-0.7952,1.26476,-0.48606,0.05627,-1.6883,-1.34341]},"mask":{"shape":[5,5],"axes":["t","s"],"kind":"activation","desc":"causal mask: 0 = allowed, -1e9 stands for minus infinity","decimals":5,"data":[0.0,-1000000000.0,-1000000000.0,-1000000000.0,-1000000000.0,0.0,0.0,-1000000000.0,-1000000000.0,-1000000000.0,0.0,0.0,0.0,-1000000000.0,-1000000000.0,0.0,0.0,0.0,0.0,-1000000000.0,0.0,0.0,0.0,0.0,0.0]},"weights":{"shape":[1,4,5,5],"axes":["b","n","t","s"],"kind":"activation","desc":"softmax weights","decimals":5,"data":[1.0,0.0,0.0,0.0,0.0,0.85384,0.14616,0.0,0.0,0.0,0.18615,0.36181,0.45204,0.0,0.0,0.0411,0.04506,0.03541,0.87843,0.0,0.03769,0.0421,0.38524,0.33796,0.197,1.0,0.0,0.0,0.0,0.0,0.44561,0.55439,0.0,0.0,0.0,0.58091,0.1098,0.30929,0.0,0.0,0.03663,0.23729,0.40515,0.32093,0.0,0.12383,0.21629,0.20574,0.19299,0.26115,1.0,0.0,0.0,0.0,0.0,0.09904,0.90096,0.0,0.0,0.0,0.22314,0.68813,0.08873,0.0,0.0,0.57068,0.01156,0.25001,0.16775,0.0,0.29412,0.01827,0.30085,0.13866,0.2481,1.0,0.0,0.0,0.0,0.0,0.47702,0.52298,0.0,0.0,0.0,0.61093,0.21089,0.17818,0.0,0.0,0.32673,0.0493,0.52507,0.0989,0.0,0.62573,0.10865,0.18687,0.03265,0.0461]},"ctx":{"shape":[1,4,5,16],"axes":["b","n","t","d"],"kind":"activation","desc":"weighted sum of values","decimals":5,"data":[0.14849,0.47154,-0.23364,1.34969,0.42666,-0.85634,-0.18773,0.72792,-0.48686,0.19857,-0.07661,0.29193,-0.81672,0.34455,0.06996,-0.48421,0.30437,0.43371,-0.06754,1.0954,0.33145,-0.69454,-0.10853,0.55532,-0.21665,0.28088,-0.08158,0.09341,-0.57693,0.46453,0.09566,-0.27834,0.29473,-0.05076,0.15968,0.24109,0.10606,-0.30606,-0.19975,0.08095,0.3316,0.47577,0.16417,0.22507,-0.3871,0.44839,0.27033,-0.2127,0.20142,0.66764,-0.55184,-0.58379,-0.83493,-0.69741,0.78398,0.23978,-0.01491,-0.02661,-0.86169,-0.05355,-0.03374,0.40753,1.42382,-0.45214,0.054,0.36146,-0.4179,-0.24984,-0.22756,-0.49166,-0.07577,0.16914,-0.09446,-0.00696,-0.17478,0.40815,-0.37474,0.19204,0.91654,-0.57689,0.14849,0.47154,-0.23364,1.34969,0.42666,-0.85634,-0.18773,0.72792,-0.48686,0.19857,-0.07661,0.29193,-0.81672,0.34455,0.06996,-0.48421,0.73974,0.32807,0.39641,0.38513,0.06552,-0.24263,0.11271,0.07322,0.53808,0.51079,-0.09545,-0.46107,0.09285,0.79965,0.16743,0.29671,0.10163,0.14983,-0.12109,0.83085,0.29704,-0.63233,-0.27061,0.44794,-0.18155,0.31065,0.09282,0.4333,-0.74879,0.30251,0.18284,-0.4925,0.19542,0.1141,-0.11443,-0.1566,-0.25178,-0.42388,0.1064,0.09818,0.22359,0.30438,-0.15136,0.23415,-0.31065,0.38123,0.72207,-0.36806,0.34917,0.5032,-0.17663,-0.19903,-0.13205,-0.32455,-0.0917,0.06716,0.11968,0.04137,-0.1497,0.03379,-0.06648,0.3925,0.74054,-0.21666,-1.27641,-0.41515,-0.63938,1.01499,0.29605,1.34645,-0.40694,0.40781,0.33188,0.71536,0.82591,0.52976,-0.10509,0.33779,0.00695,0.69364,-0.0498,-0.73626,0.6623,0.13715,0.57505,-0.39654,-0.28558,-0.43064,-0.83465,-0.61813,-0.0509,0.11724,0.32638,-0.20662,-0.38153,-0.24264,-0.26397,-0.55504,0.35618,0.30511,0.44588,0.00591,-0.34719,-0.32659,-0.53902,-0.35555,0.10816,0.15443,0.26889,-0.10213,-0.28952,-0.00884,-0.75221,-0.09939,-0.51755,0.43639,0.10352,0.88349,-0.50275,0.2257,0.43914,0.41848,0.68903,0.21027,0.14218,0.11671,0.05107,0.46081,-0.25768,-0.05428,-0.29153,-0.13311,0.00333,0.32033,-0.32401,0.24344,0.43658,0.02272,0.6205,-0.07959,0.46,0.2157,-0.07115,0.20933,-1.27641,-0.41515,-0.63938,1.01499,0.29605,1.34645,-0.40694,0.40781,0.33188,0.71536,0.82591,0.52976,-0.10509,0.33779,0.00695,0.69364,-0.5644,-0.60154,0.1162,0.50544,0.458,0.3347,-0.33649,-0.07888,-0.34525,-0.05868,0.31695,0.2903,0.14536,0.02178,-0.21855,0.15017,-0.83752,-0.27874,-0.33194,0.73037,0.23431,0.91983,-0.44468,0.02276,0.09913,0.29794,0.52415,0.31221,0.08514,0.16194,-0.0835,0.49983,-0.5878,0.2043,-0.50033,0.46469,-0.07358,0.95177,-0.59789,-0.13926,0.42552,0.25428,0.49928,0.06549,0.25019,0.07915,0.01567,0.56591,-0.82013,-0.22915,-0.4165,0.62221,0.18014,0.92146,-0.42616,0.14438,0.24738,0.34807,0.61477,0.27348,0.12069,0.20992,-0.0506,0.50238]},"ctx_flat":{"shape":[1,5,64],"axes":["b","t","nd"],"kind":"activation","desc":"heads merged","decimals":5,"data":[0.14849,0.47154,-0.23364,1.34969,0.42666,-0.85634,-0.18773,0.72792,-0.48686,0.19857,-0.07661,0.29193,-0.81672,0.34455,0.06996,-0.48421,0.14849,0.47154,-0.23364,1.34969,0.42666,-0.85634,-0.18773,0.72792,-0.48686,0.19857,-0.07661,0.29193,-0.81672,0.34455,0.06996,-0.48421,-1.27641,-0.41515,-0.63938,1.01499,0.29605,1.34645,-0.40694,0.40781,0.33188,0.71536,0.82591,0.52976,-0.10509,0.33779,0.00695,0.69364,-1.27641,-0.41515,-0.63938,1.01499,0.29605,1.34645,-0.40694,0.40781,0.33188,0.71536,0.82591,0.52976,-0.10509,0.33779,0.00695,0.69364,0.30437,0.43371,-0.06754,1.0954,0.33145,-0.69454,-0.10853,0.55532,-0.21665,0.28088,-0.08158,0.09341,-0.57693,0.46453,0.09566,-0.27834,0.73974,0.32807,0.39641,0.38513,0.06552,-0.24263,0.11271,0.07322,0.53808,0.51079,-0.09545,-0.46107,0.09285,0.79965,0.16743,0.29671,-0.0498,-0.73626,0.6623,0.13715,0.57505,-0.39654,-0.28558,-0.43064,-0.83465,-0.61813,-0.0509,0.11724,0.32638,-0.20662,-0.38153,-0.24264,-0.5644,-0.60154,0.1162,0.50544,0.458,0.3347,-0.33649,-0.07888,-0.34525,-0.05868,0.31695,0.2903,0.14536,0.02178,-0.21855,0.15017,0.29473,-0.05076,0.15968,0.24109,0.10606,-0.30606,-0.19975,0.08095,0.3316,0.47577,0.16417,0.22507,-0.3871,0.44839,0.27033,-0.2127,0.10163,0.14983,-0.12109,0.83085,0.29704,-0.63233,-0.27061,0.44794,-0.18155,0.31065,0.09282,0.4333,-0.74879,0.30251,0.18284,-0.4925,-0.26397,-0.55504,0.35618,0.30511,0.44588,0.00591,-0.34719,-0.32659,-0.53902,-0.35555,0.10816,0.15443,0.26889,-0.10213,-0.28952,-0.00884,-0.83752,-0.27874,-0.33194,0.73037,0.23431,0.91983,-0.44468,0.02276,0.09913,0.29794,0.52415,0.31221,0.08514,0.16194,-0.0835,0.49983,0.20142,0.66764,-0.55184,-0.58379,-0.83493,-0.69741,0.78398,0.23978,-0.01491,-0.02661,-0.86169,-0.05355,-0.03374,0.40753,1.42382,-0.45214,0.19542,0.1141,-0.11443,-0.1566,-0.25178,-0.42388,0.1064,0.09818,0.22359,0.30438,-0.15136,0.23415,-0.31065,0.38123,0.72207,-0.36806,-0.75221,-0.09939,-0.51755,0.43639,0.10352,0.88349,-0.50275,0.2257,0.43914,0.41848,0.68903,0.21027,0.14218,0.11671,0.05107,0.46081,-0.5878,0.2043,-0.50033,0.46469,-0.07358,0.95177,-0.59789,-0.13926,0.42552,0.25428,0.49928,0.06549,0.25019,0.07915,0.01567,0.56591,0.054,0.36146,-0.4179,-0.24984,-0.22756,-0.49166,-0.07577,0.16914,-0.09446,-0.00696,-0.17478,0.40815,-0.37474,0.19204,0.91654,-0.57689,0.34917,0.5032,-0.17663,-0.19903,-0.13205,-0.32455,-0.0917,0.06716,0.11968,0.04137,-0.1497,0.03379,-0.06648,0.3925,0.74054,-0.21666,-0.25768,-0.05428,-0.29153,-0.13311,0.00333,0.32033,-0.32401,0.24344,0.43658,0.02272,0.6205,-0.07959,0.46,0.2157,-0.07115,0.20933,-0.82013,-0.22915,-0.4165,0.62221,0.18014,0.92146,-0.42616,0.14438,0.24738,0.34807,0.61477,0.27348,0.12069,0.20992,-0.0506,0.50238],"split":{"nd":["n",16]}},"attn_out":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"o_proj output","decimals":5,"data":[0.20739,1.19931,-1.19184,0.61161,-1.68838,0.08585,0.47312,-0.52707,0.72227,0.9746,-1.09539,0.83757,-0.42177,0.73944,-0.14967,0.04909,0.76322,0.86787,-0.79503,0.5589,-0.82613,-0.16578,-0.36702,-0.76295,0.4099,0.65108,0.0121,0.2806,-0.78633,0.75276,0.24135,-0.16293,0.73841,0.74488,-0.33274,0.71763,-0.70201,0.84233,0.4691,-0.13848]},"res1":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"residual 1","decimals":5,"data":[0.20527,1.20092,-1.18018,0.59837,-1.69723,0.05533,0.46249,-0.5243,0.73594,0.98607,-1.06121,0.82488,-0.43324,0.76117,-0.12745,0.06557,0.76322,0.90864,-0.7966,0.5589,-0.79121,-0.18909,-0.40462,-0.78273,0.35619,0.65507,0.03017,0.29201,-0.77443,0.76815,0.26003,-0.18209,0.73063,0.74699,-0.32194,0.75059,-0.66295,0.83607,0.52013,-0.14203]},"norm2":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"post-attention RMSNorm (input of the MLP)","decimals":5,"data":[0.22586,1.3214,-1.29859,0.6584,-1.86751,0.06088,0.5089,-0.5769,1.02698,1.37604,-1.48088,1.15109,-0.60458,1.06219,-0.17786,0.09149,1.10839,1.31957,-1.15685,0.81166,-1.14904,-0.27461,-0.5876,-1.13671,0.72468,1.33275,0.06138,0.59409,-1.57558,1.56279,0.52903,-0.37047,1.15738,1.1833,-0.50998,1.189,-1.05018,1.32442,0.82393,-0.225]},"gate":{"shape":[1,5,32],"axes":["b","t","i"],"kind":"activation","desc":"gate projection","decimals":5,"data":[0.31286,0.0499,-0.32795,0.11949,-0.35214,-1.57407,0.0608,-0.3993,-0.89746,0.25377,-0.36479,0.48878,-0.09469,-0.82083,0.16832,0.38855,-0.44125,0.15856,-0.35797,-0.17713,0.7438,0.97574,0.54431,-0.65719,0.53237,0.33466,0.04458,-0.47449,0.20004,0.67097,0.23676,0.90698,0.62572,0.33232,0.64015,-0.08483,0.3487,-2.13655,0.50893,0.04854,-0.53482,0.25535,-0.70918,-0.0682,-0.13919,-0.10177,-0.22668,-0.32301,-0.0019,-0.2828,-0.48566,-0.2139,0.20993,1.06924,0.13596,0.10803,-0.00298,-0.05697,0.29637,-0.65655,-0.67426,-0.08705,-0.19543,0.33664,0.15835,-0.53892,0.06653,-0.53773,-0.3348,-1.54921,0.35586,-0.18585,-1.23703,-0.04215,-0.21391,-0.05207,-0.32493,-0.67614,-0.22482,0.36673,-0.28818,0.16061,-0.40173,-0.703,0.41023,1.17685,0.74916,-0.00198,-0.02219,-0.35435,0.1417,-0.9085,-0.21301,0.10353,-0.14342,0.48827,0.49818,-0.33213,-0.04709,0.7902,-0.12689,-1.71072,-0.28326,0.21097,-0.37284,0.2326,-0.04006,-0.0542,-0.04472,-0.4403,0.10449,0.16399,0.05418,0.65257,-0.2122,-0.04507,0.41786,0.98916,-0.16434,-0.75322,-0.23012,0.78586,-0.1495,-0.34513,0.06313,0.14735,-0.14144,0.32095,0.69875,0.01568,0.27017,0.51918,-0.00323,-1.75576,-0.1718,0.16424,-0.14528,0.07867,-0.15103,0.16397,-0.24369,-0.69109,-0.0503,-0.31707,0.25258,0.28751,-0.20584,0.05962,0.36501,0.80213,-0.23109,-0.39639,-0.19152,0.52776,0.10052,-0.68089,-0.35851,-0.12245,-0.239,0.16702]},"up":{"shape":[1,5,32],"axes":["b","t","i"],"kind":"activation","desc":"up projection","decimals":5,"data":[-0.49685,0.02237,-0.5924,-0.09488,-0.32336,0.34214,0.24735,-0.39353,0.49635,0.35241,0.18902,-0.87045,-0.52295,0.34915,-0.40126,-1.29694,1.3709,-0.54308,-0.65708,0.38702,-0.24662,-0.41219,1.5428,0.62723,-0.01001,-0.21506,0.37012,-1.01718,0.83871,1.23984,1.31766,0.24316,-0.23573,-0.7456,-0.31968,-0.34108,-0.25198,0.34812,0.4486,-0.27227,0.36117,0.30972,-0.52535,-1.36682,0.00789,0.84856,-0.17552,-2.06163,0.88831,-0.04423,-0.69652,-0.51235,0.01782,-0.5492,0.79798,0.24318,-0.44315,0.33817,0.11595,-0.70653,1.0314,1.02015,1.66709,0.24625,-0.38487,-0.65349,-0.7666,-0.1672,-0.64936,0.08477,0.61003,-0.44987,1.29646,0.69043,-0.00198,-1.06273,-0.69271,0.18168,-0.685,-1.62561,1.20852,-0.31068,-0.38152,-0.03022,0.30725,-0.78835,1.50158,0.60669,-0.74913,-0.21239,0.44587,-1.17089,0.43978,1.14084,0.7995,0.58706,-0.46302,0.30919,-0.69264,-1.02713,0.16847,0.94006,-0.3081,-0.02206,0.24394,0.29528,-0.36295,-1.2907,-0.29428,0.41184,0.2276,-1.35793,0.46907,0.06199,-0.34858,-0.20719,-0.8168,-0.82662,0.38181,0.3952,0.43155,0.614,0.28579,-1.57912,0.79975,0.6983,1.64935,-0.05611,-0.17371,-0.07654,-0.63656,-0.70165,0.06817,1.09911,-0.03555,0.11099,0.25846,0.24585,-0.72026,-1.49617,-0.04722,0.88911,-0.07611,-1.64105,0.86732,-0.28093,-0.35042,-0.58942,-0.56951,-0.60556,0.48555,0.25234,0.23958,0.76057,-0.18627,-1.33065,1.12258,0.97255,1.92782,-0.00687]},"act":{"shape":[1,5,32],"axes":["b","t","i"],"kind":"activation","desc":"SiLU(gate)","decimals":5,"data":[0.1807,0.02557,-0.13733,0.06331,-0.14539,-0.27017,0.03133,-0.16031,-0.25988,0.1429,-0.14949,0.30296,-0.0451,-0.25084,0.09123,0.23155,-0.17272,0.08555,-0.14729,-0.08074,0.50417,0.70864,0.34445,-0.22434,0.33542,0.19507,0.02278,-0.18199,0.10999,0.444,0.13233,0.64612,0.40767,0.19352,0.41916,-0.04062,0.20444,-0.22561,0.31785,0.02486,-0.19756,0.14389,-0.23387,-0.03294,-0.06476,-0.0483,-0.10055,-0.13565,-0.00095,-0.12154,-0.185,-0.09555,0.11594,0.796,0.0726,0.05693,-0.00149,-0.02767,0.16998,-0.22422,-0.22759,-0.04163,-0.0882,0.19638,0.08543,-0.19856,0.03437,-0.19827,-0.13964,-0.27142,0.20926,-0.08431,-0.27827,-0.02063,-0.09556,-0.02536,-0.1363,-0.22794,-0.09983,0.21661,-0.12347,0.08674,-0.16105,-0.2328,0.24661,0.89956,0.50867,-0.00099,-0.01097,-0.14611,0.07586,-0.26102,-0.0952,0.05444,-0.06657,0.30258,0.30988,-0.13874,-0.02299,0.54356,-0.05943,-0.26186,-0.1217,0.11657,-0.15207,0.12976,-0.01963,-0.02636,-0.02186,-0.17245,0.05497,0.0887,0.02783,0.42912,-0.09489,-0.02203,0.25196,0.72102,-0.07543,-0.24112,-0.10188,0.53984,-0.06917,-0.14308,0.03256,0.0791,-0.06573,0.18601,0.4667,0.0079,0.15322,0.3255,-0.00161,-0.25866,-0.07854,0.08885,-0.06737,0.04088,-0.06982,0.08869,-0.10707,-0.23068,-0.02452,-0.13361,0.14215,0.16428,-0.09236,0.0307,0.21544,0.55381,-0.10225,-0.15942,-0.08662,0.33194,0.05279,-0.22882,-0.14746,-0.05748,-0.10529,0.09047]},"act_up":{"shape":[1,5,32],"axes":["b","t","i"],"kind":"activation","desc":"SiLU(gate) * up","decimals":5,"data":[-0.08978,0.00057,0.08135,-0.00601,0.04701,-0.09244,0.00775,0.06309,-0.12899,0.05036,-0.02826,-0.26371,0.02359,-0.08758,-0.03661,-0.3003,-0.23679,-0.04646,0.09678,-0.03125,-0.12434,-0.2921,0.53141,-0.14072,-0.00336,-0.04195,0.00843,0.18512,0.09225,0.55049,0.17436,0.15711,-0.0961,-0.14429,-0.134,0.01385,-0.05152,-0.07854,0.14259,-0.00677,-0.07135,0.04457,0.12286,0.04502,-0.00051,-0.04099,0.01765,0.27965,-0.00084,0.00538,0.12885,0.04896,0.00207,-0.43716,0.05793,0.01384,0.00066,-0.00936,0.01971,0.15842,-0.23474,-0.04247,-0.14703,0.04836,-0.03288,0.12976,-0.02635,0.03315,0.09067,-0.02301,0.12765,0.03793,-0.36077,-0.01425,0.00019,0.02695,0.09442,-0.04141,0.06838,-0.35213,-0.14922,-0.02695,0.06144,0.00703,0.07577,-0.70917,0.76381,-0.0006,0.00822,0.03103,0.03382,0.30563,-0.04187,0.06211,-0.05323,0.17763,-0.14348,-0.0429,0.01592,-0.55831,-0.01001,-0.24617,0.0375,-0.00257,-0.03709,0.03832,0.00712,0.03403,0.00643,-0.07102,0.01251,-0.12045,0.01305,0.0266,0.03308,0.00456,-0.2058,-0.59601,-0.0288,-0.09529,-0.04397,0.33146,-0.01977,0.22594,0.02604,0.05523,-0.1084,-0.01044,-0.08107,-0.0006,-0.09753,-0.22839,-0.00011,-0.2843,0.00279,0.00986,-0.01741,0.01005,0.05029,-0.1327,0.00506,-0.2051,0.00187,0.21926,0.12329,-0.04615,0.03237,-0.0181,-0.1227,-0.33536,-0.04965,-0.04023,-0.02075,0.25246,-0.00983,0.30448,-0.16554,-0.05591,-0.20298,-0.00062]},"down":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"down projection","decimals":5,"data":[-0.0969,0.4681,-0.13251,0.33532,0.05248,0.63255,-0.03948,0.43817,-0.05047,-0.10813,-0.1945,-0.16024,-0.27551,-0.1723,0.0562,-0.18919,-0.29793,0.44863,-0.04168,0.09152,-0.242,0.51614,0.20448,0.03764,0.0503,0.09668,-0.0818,-0.19499,-0.29337,-0.106,0.425,-0.22332,0.15492,-0.0506,-0.12422,-0.33614,-0.24033,-0.14086,0.21155,-0.22728]},"res2":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"residual 2 = output of layer 0","decimals":5,"data":[0.10836,1.66902,-1.31269,0.93369,-1.64475,0.68788,0.42301,-0.08613,0.68547,0.87795,-1.25571,0.66464,-0.70876,0.58888,-0.07125,-0.12363,0.46529,1.35727,-0.83828,0.65041,-1.03322,0.32705,-0.20014,-0.74509,0.40649,0.75175,-0.05163,0.09702,-1.0678,0.66215,0.68503,-0.40542,0.88555,0.69639,-0.44616,0.41444,-0.90328,0.69521,0.73168,-0.36932]},"layer1_out":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"output of layer 1 (same graph again)","decimals":5,"data":[0.90668,3.01861,-1.85036,0.39038,-0.96901,0.48954,-0.46859,-1.09166,1.3281,2.48915,-1.87224,-0.33726,0.10868,0.03736,-1.21256,-1.03195,1.10225,2.96991,-1.49982,-0.20966,-0.22295,-0.17876,-1.10558,-1.55201,0.9575,2.18865,-0.80179,-0.64405,-0.45448,0.06945,-0.34672,-0.9356,1.34828,2.44969,-1.14974,-0.34724,-0.22188,0.14996,-0.2623,-0.95176]},"final_norm":{"shape":[1,5,8],"axes":["b","t","h"],"kind":"activation","desc":"final RMSNorm","decimals":5,"data":[0.63912,2.12782,-1.30432,0.27518,-0.68305,0.34508,-0.33031,-0.76952,0.99942,1.87313,-1.40889,-0.25379,0.08179,0.02812,-0.91248,-0.77656,0.7784,2.09733,-1.05916,-0.14806,-0.15745,-0.12624,-0.78075,-1.09602,0.95921,2.19254,-0.80322,-0.6452,-0.45529,0.06957,-0.34734,-0.93726,1.1878,2.15812,-1.01289,-0.30591,-0.19548,0.13211,-0.23108,-0.83848]},"logits_top5":{"shape":[5],"axes":["v"],"kind":"activation","desc":"the 5 largest next-token logits (last position)","decimals":7,"data":[0.0338161,0.0328484,0.032834,0.0318859,0.0315517]},"E_rows":{"shape":[5,8],"axes":["t","h"],"kind":"weight","desc":"rows of the embedding table E for the input ids (the table has 151,936 rows)","decimals":7,"data":[-0.002121,0.0016098,0.0116577,-0.0132446,-0.0088501,-0.0305176,-0.0106201,0.0027771,0.0136719,0.0114746,0.0341797,-0.0126953,-0.0114746,0.0217285,0.0222168,0.0164795,0.0,0.0407715,-0.001564,0.0,0.0349121,-0.0233154,-0.0375977,-0.0197754,-0.0537109,0.0039978,0.0180664,0.0114136,0.0119019,0.0153809,0.0186768,-0.019165,-0.007782,0.0021057,0.0108032,0.032959,0.0390625,-0.0062561,0.0510254,-0.0035553]},"Wq":{"shape":[4,16,8],"axes":["n","d","h"],"kind":"weight","desc":"q_proj weight, PyTorch layout [out=(n d), in=h]","decimals":6,"data":[-0.166992,0.194336,-0.12207,-0.081055,-0.029297,0.052002,0.263672,0.072266,0.201172,-0.067871,0.104004,0.015869,-0.244141,0.112793,-0.223633,0.203125,-0.182617,0.192383,-0.135742,-0.063477,0.105957,-0.090332,0.15332,-0.042969,-0.033936,-0.165039,-0.263672,-0.033936,-0.253906,-0.287109,0.269531,0.151367,0.208008,-0.01355,0.009033,0.117188,-0.069824,-0.234375,-0.011292,0.090332,0.099609,-0.239258,-0.124023,-0.289062,0.261719,0.244141,0.205078,-0.15625,-0.135742,0.194336,-0.029297,0.149414,-0.283203,-0.119629,0.285156,-0.074707,0.203125,0.069824,-0.244141,0.241211,-0.15332,0.194336,-0.182617,-0.128906,0.214844,-0.01355,-0.165039,-0.031738,0.15625,0.03833,0.142578,0.21875,0.165039,-0.119629,0.234375,-0.099609,-0.126953,-0.175781,-0.022583,0.185547,0.06543,0.214844,0.232422,0.036133,-0.285156,0.018066,-0.12207,0.15625,0.137695,0.166992,-0.228516,-0.144531,0.07666,-0.07666,0.090332,-0.241211,0.132812,-0.11084,-0.101562,-0.074707,0.040527,-0.033936,0.165039,0.142578,0.099609,0.285156,-0.117188,0.069824,0.192383,0.063477,0.228516,0.203125,0.255859,-0.165039,0.061035,0.151367,0.285156,0.029297,-0.033936,-0.052002,-0.168945,-0.067871,-0.061035,0.119629,0.253906,-0.011292,-0.031738,-0.273438,0.054199,0.029297,0.253906,-0.271484,-0.063477,0.135742,-0.265625,-0.045166,-0.033936,-0.201172,-0.192383,-0.101562,-0.162109,-0.216797,-0.063477,-0.101562,-0.135742,0.018066,0.25,-0.239258,-0.01355,0.117188,0.067871,0.201172,-0.074707,0.067871,-0.257812,0.241211,0.024902,-0.040527,0.137695,0.162109,-0.101562,-0.117188,-0.162109,0.166992,0.081055,-0.049805,0.12207,-0.259766,-0.052002,0.112793,0.067871,-0.283203,-0.056396,-0.009033,0.259766,-0.289062,0.162109,-0.083496,0.237305,0.189453,0.036133,-0.15625,-0.194336,-0.067871,0.011292,0.12207,-0.259766,-0.083496,0.052002,-0.067871,0.022583,-0.031738,-0.099609,-0.175781,-0.036133,-0.211914,0.22168,-0.289062,-0.230469,-0.25,-0.036133,-0.036133,0.214844,0.085938,0.185547,-0.248047,-0.175781,0.279297,-0.144531,0.192383,-0.117188,0.199219,0.004517,0.06543,-0.069824,-0.230469,0.061035,-0.045166,-0.151367,-0.279297,0.160156,-0.045166,0.1875,-0.175781,-0.006775,0.099609,-0.099609,0.241211,0.192383,-0.283203,0.208008,-0.011292,0.225586,0.036133,0.108398,0.180664,0.015869,0.15625,0.042969,-0.022583,-0.061035,-0.042969,0.07666,0.146484,-0.15625,-0.117188,-0.01355,-0.067871,-0.139648,-0.069824,0.006775,0.054199,0.144531,0.063477,0.279297,-0.139648,-0.166992,-0.124023,-0.072266,-0.006775,0.1875,-0.132812,-0.087891,0.085938,0.069824,0.108398,-0.230469,-0.040527,0.020264,-0.244141,0.175781,-0.208008,-0.225586,-0.269531,-0.020264,0.248047,-0.135742,0.083496,0.146484,-0.092773,-0.06543,-0.273438,-0.01355,-0.265625,0.166992,0.216797,-0.052002,-0.031738,0.06543,0.259766,0.146484,0.06543,0.239258,0.099609,-0.042969,0.149414,-0.126953,-0.087891,-0.047363,0.259766,0.087891,-0.085938,0.175781,-0.036133,-0.056396,-0.199219,-0.241211,-0.009033,-0.033936,-0.15625,0.192383,0.239258,-0.036133,-0.253906,0.175781,0.067871,-0.042969,-0.214844,0.175781,-0.271484,-0.112793,-0.25,-0.201172,0.054199,-0.004517,-0.216797,-0.277344,0.168945,0.006775,0.192383,-0.230469,0.283203,-0.135742,0.07666,0.25,0.072266,0.074707,-0.006775,0.225586,-0.225586,-0.15625,0.040527,0.085938,0.244141,0.074707,-0.275391,-0.079102,-0.040527,-0.132812,-0.011292,0.15332,-0.07666,-0.063477,-0.232422,-0.211914,0.162109,-0.228516,0.273438,0.124023,-0.052002,0.178711,-0.085938,-0.024902,0.277344,0.139648,-0.130859,-0.108398,-0.22168,0.214844,-0.259766,0.004517,-0.074707,-0.011292,-0.074707,-0.042969,-0.178711,-0.063477,0.241211,-0.126953,-0.178711,0.182617,0.182617,-0.132812,-0.255859,-0.074707,0.273438,0.151367,0.158203,0.158203,0.269531,0.287109,-0.171875,-0.225586,0.054199,0.105957,0.192383,0.230469,-0.11084,0.175781,0.185547,0.03833,0.175781,0.099609,-0.124023,0.246094,0.056396,-0.244141,-0.230469,-0.160156,-0.052002,0.15625,-0.06543,0.241211,-0.029297,0.160156,0.271484,0.015869,-0.119629,-0.128906,0.189453,-0.004517,0.002258,0.180664,0.036133,0.211914,-0.209961,-0.092773,-0.173828,0.104004,-0.033936,-0.07666,-0.0271,0.042969,-0.139648,0.228516,0.162109,0.225586,-0.149414,-0.214844,-0.162109,0.092773,0.146484,-0.232422,-0.049805,-0.273438,-0.261719,0.061035,-0.185547,-0.024902,0.006775,0.094727,0.004517,-0.209961,-0.203125,0.175781,0.246094,-0.042969,-0.090332,0.135742,-0.090332,-0.015869,0.259766,0.124023,-0.020264,0.265625,0.117188,-0.225586,0.263672,0.21875,-0.22168,-0.087891,-0.03833,-0.201172,0.277344,-0.087891,-0.11084,-0.208008,0.230469,-0.265625,0.024902,-0.083496,-0.15625,0.165039,-0.199219,-0.180664,0.149414,0.178711,-0.289062,-0.03833,0.139648,-0.246094,-0.087891,0.020264,0.058594,0.115234,-0.246094,0.22168,-0.239258,0.149414,-0.137695,-0.124023,-0.083496,0.144531,-0.036133,-0.002258,0.228516,-0.180664,0.146484,0.092773,0.162109,0.273438,-0.273438]},"Wk":{"shape":[2,16,8],"axes":["k","d","h"],"kind":"weight","desc":"k_proj weight","decimals":6,"data":[-0.337891,-0.229492,-0.168945,-0.369141,-0.28125,0.275391,0.205078,0.042236,0.259766,-0.181641,0.181641,-0.277344,0.275391,0.04541,-0.099609,0.335938,-0.02417,0.296875,-0.009033,-0.003021,0.25,0.018066,0.027222,-0.223633,0.04834,0.166016,0.25,-0.084473,0.19043,0.1875,-0.211914,0.178711,0.129883,0.347656,-0.271484,-0.369141,0.04541,0.332031,-0.275391,-0.25,-0.099609,0.132812,0.027222,0.181641,-0.259766,0.1875,-0.205078,0.027222,-0.193359,0.380859,-0.042236,0.357422,0.168945,0.181641,0.078613,0.347656,-0.060547,0.302734,-0.105957,-0.365234,-0.208008,-0.335938,-0.084473,0.171875,-0.148438,0.021118,-0.255859,-0.332031,0.259766,-0.084473,-0.108887,0.003021,0.04541,0.193359,0.226562,-0.135742,-0.287109,0.114746,-0.287109,0.066406,-0.160156,0.078613,0.353516,0.193359,-0.036133,-0.04834,-0.009033,0.015137,-0.02417,0.193359,0.253906,-0.099609,0.310547,0.371094,0.275391,-0.310547,-0.006042,0.0,-0.04834,0.353516,-0.009033,-0.178711,-0.214844,0.265625,-0.126953,-0.132812,-0.066406,-0.359375,-0.1875,-0.308594,-0.232422,-0.039307,0.223633,-0.289062,-0.19043,-0.114746,-0.144531,0.238281,0.078613,-0.386719,0.214844,0.232422,0.259766,0.111816,0.302734,0.042236,0.232422,-0.087402,-0.178711,0.25,-0.174805,0.174805,0.238281,-0.121094,0.066406,0.015137,0.245117,0.132812,-0.168945,-0.174805,0.163086,-0.371094,-0.223633,0.084473,-0.349609,0.308594,-0.003021,-0.298828,0.296875,-0.386719,-0.036133,0.302734,-0.144531,0.060547,0.111816,0.02417,-0.335938,0.063477,-0.375,0.148438,0.376953,-0.160156,0.148438,-0.259766,-0.220703,0.04541,-0.382812,-0.304688,-0.253906,-0.087402,-0.337891,0.376953,-0.148438,-0.353516,0.060547,0.271484,-0.369141,-0.006042,-0.25,0.111816,0.157227,-0.337891,0.263672,0.111816,-0.09668,0.178711,-0.126953,0.132812,-0.259766,-0.277344,0.075684,0.154297,0.042236,-0.382812,-0.042236,0.275391,0.242188,0.05127,-0.386719,0.208008,-0.223633,0.255859,-0.335938,0.232422,-0.144531,-0.018066,0.108887,-0.105957,-0.018066,-0.380859,-0.292969,-0.075684,-0.015137,0.039307,0.060547,0.253906,0.166016,0.066406,0.269531,0.211914,-0.111816,0.141602,0.087402,-0.289062,-0.135742,0.302734,0.126953,-0.380859,-0.084473,-0.376953,-0.114746,-0.386719,0.271484,-0.021118,0.166016,-0.144531,-0.202148,-0.105957,0.226562,0.105957,0.181641,0.003021,0.226562,0.141602,0.217773,0.283203,-0.208008,-0.157227,-0.078613,-0.18457,0.263672,-0.084473,-0.386719,-0.308594,-0.02417,-0.314453]},"Wv":{"shape":[2,16,8],"axes":["k","d","h"],"kind":"weight","desc":"v_proj weight","decimals":6,"data":[0.003021,0.34375,0.174805,-0.04541,-0.18457,-0.012085,0.353516,0.205078,-0.057373,-0.259766,0.380859,0.211914,0.054443,-0.330078,0.380859,-0.1875,0.174805,0.337891,0.042236,0.208008,-0.359375,0.214844,-0.117676,0.382812,0.027222,-0.277344,0.081543,-0.375,0.099609,-0.34375,-0.265625,0.132812,0.229492,0.308594,-0.265625,0.18457,-0.211914,-0.326172,0.09668,0.174805,0.220703,0.298828,-0.375,0.308594,-0.324219,0.168945,0.148438,0.271484,-0.376953,-0.298828,0.265625,-0.144531,-0.105957,0.376953,-0.245117,0.036133,-0.34375,0.214844,-0.259766,-0.220703,-0.069336,-0.296875,0.117676,0.154297,0.066406,0.34375,0.09668,-0.277344,-0.009033,0.382812,0.087402,0.269531,0.057373,0.09375,0.271484,-0.357422,0.069336,0.238281,-0.245117,0.012085,0.242188,0.217773,-0.302734,-0.117676,0.193359,-0.060547,-0.015137,0.289062,-0.075684,0.1875,-0.135742,0.238281,0.171875,-0.208008,-0.326172,-0.027222,0.063477,-0.259766,0.060547,-0.009033,0.057373,0.304688,0.220703,0.308594,0.006042,0.220703,0.341797,-0.242188,-0.09082,0.036133,0.220703,-0.087402,-0.330078,-0.012085,0.335938,-0.211914,0.376953,-0.027222,0.277344,-0.363281,0.304688,-0.259766,0.292969,0.245117,-0.208008,0.28125,-0.060547,0.166016,0.066406,-0.117676,-0.027222,0.255859,0.108887,0.326172,0.163086,-0.193359,0.009033,0.310547,-0.320312,0.283203,-0.081543,0.075684,-0.287109,-0.021118,0.0,0.214844,-0.099609,0.057373,-0.09082,0.205078,0.25,0.380859,0.341797,0.259766,-0.181641,-0.316406,-0.223633,-0.196289,-0.310547,0.238281,-0.114746,0.289062,0.027222,0.054443,-0.376953,-0.078613,0.226562,0.129883,0.310547,0.075684,0.018066,-0.332031,-0.009033,-0.353516,-0.386719,-0.316406,0.181641,-0.347656,-0.148438,0.171875,0.0,-0.033203,0.157227,0.042236,-0.310547,-0.232422,0.018066,0.168945,-0.211914,-0.326172,0.353516,-0.298828,-0.365234,0.18457,-0.310547,-0.099609,0.04834,-0.277344,0.163086,-0.214844,-0.363281,-0.174805,-0.245117,-0.386719,0.111816,-0.144531,-0.242188,0.326172,-0.242188,0.05127,0.332031,0.277344,-0.09375,-0.357422,0.081543,-0.1875,-0.072266,0.283203,-0.320312,-0.369141,-0.316406,-0.154297,0.208008,0.030273,-0.121094,0.376953,0.05127,0.135742,0.1875,-0.111816,0.304688,0.144531,0.269531,-0.369141,0.151367,0.084473,0.357422,-0.275391,0.027222,0.04541,-0.363281,-0.202148,-0.148438,-0.308594,0.275391,0.114746,-0.214844,0.341797,0.271484,-0.163086,0.148438,-0.160156,0.277344,-0.163086,-0.371094,-0.042236]},"Wo":{"shape":[8,4,16],"axes":["h","n","d"],"kind":"weight","desc":"o_proj weight, layout [out=h, in=(n d)]","decimals":6,"data":[-0.024902,0.11084,0.083496,-0.130859,0.104004,0.104004,-0.015869,0.022583,0.03833,-0.241211,0.178711,0.112793,-0.189453,-0.239258,0.126953,-0.173828,0.11084,-0.087891,0.137695,0.246094,-0.279297,-0.101562,0.146484,0.12207,0.241211,-0.011292,-0.132812,-0.061035,-0.173828,-0.020264,0.230469,-0.189453,-0.083496,0.216797,0.018066,-0.205078,0.092773,0.022583,-0.253906,0.132812,-0.132812,-0.230469,-0.208008,-0.049805,0.031738,-0.168945,0.029297,-0.265625,0.192383,-0.216797,-0.105957,0.182617,0.067871,0.211914,-0.119629,0.054199,0.063477,-0.257812,0.099609,-0.194336,-0.06543,0.158203,-0.232422,0.192383,0.234375,-0.253906,0.142578,-0.002258,0.092773,0.11084,0.124023,0.135742,-0.241211,-0.180664,0.230469,0.11084,-0.15332,0.033936,0.261719,-0.269531,0.185547,0.248047,0.063477,0.257812,0.090332,-0.132812,0.275391,0.083496,-0.090332,0.097168,0.165039,-0.15332,0.160156,0.165039,0.135742,-0.203125,-0.056396,0.192383,-0.185547,0.173828,-0.01355,0.087891,0.085938,-0.162109,-0.205078,-0.185547,0.285156,-0.205078,-0.097168,-0.168945,-0.092773,-0.101562,0.07666,0.112793,-0.063477,0.158203,0.112793,0.182617,0.047363,-0.241211,-0.196289,0.205078,-0.06543,-0.182617,0.283203,0.063477,-0.244141,-0.011292,-0.271484,-0.283203,0.255859,-0.25,-0.192383,0.081055,0.287109,0.158203,-0.173828,0.21875,-0.158203,0.158203,-0.049805,0.151367,-0.124023,0.196289,0.263672,-0.045166,-0.208008,-0.139648,-0.132812,0.036133,-0.011292,0.004517,-0.225586,-0.263672,0.149414,-0.058594,0.196289,-0.126953,0.237305,-0.241211,-0.115234,-0.052002,0.03833,-0.171875,-0.033936,0.151367,0.165039,-0.087891,0.228516,0.173828,-0.087891,0.128906,0.117188,-0.25,-0.058594,0.119629,0.137695,0.054199,0.246094,0.022583,-0.277344,-0.079102,0.036133,-0.142578,-0.214844,-0.259766,-0.22168,0.1875,0.033936,0.216797,0.079102,0.234375,-0.099609,0.196289,-0.225586,-0.166992,-0.21875,-0.097168,-0.239258,-0.271484,-0.149414,0.067871,-0.117188,0.182617,-0.124023,0.248047,-0.261719,-0.085938,0.214844,-0.223633,0.079102,0.031738,-0.024902,0.042969,0.265625,-0.0271,-0.25,-0.074707,0.031738,0.119629,0.132812,0.234375,0.208008,-0.040527,-0.036133,0.15625,0.132812,0.024902,0.160156,0.25,0.185547,0.01355,0.099609,-0.253906,-0.225586,0.117188,0.208008,0.132812,-0.097168,-0.108398,-0.269531,-0.223633,0.11084,0.237305,0.192383,0.211914,0.208008,-0.208008,-0.255859,0.255859,-0.175781,0.081055,0.124023,0.168945,-0.090332,-0.285156,-0.246094,-0.196289,0.06543,0.040527,-0.146484,0.192383,0.263672,0.209961,-0.047363,-0.216797,0.15332,0.018066,0.045166,-0.139648,0.083496,-0.083496,0.024902,-0.069824,0.002258,0.265625,0.214844,-0.142578,0.257812,-0.020264,0.171875,0.165039,-0.119629,0.099609,0.255859,-0.049805,0.160156,-0.259766,0.259766,-0.024902,0.241211,-0.072266,-0.126953,-0.042969,0.045166,0.063477,0.018066,-0.063477,0.194336,-0.253906,0.058594,0.279297,-0.180664,-0.042969,0.094727,0.024902,-0.199219,-0.261719,-0.12207,-0.165039,0.047363,-0.049805,-0.209961,-0.124023,-0.142578,-0.209961,-0.189453,-0.255859,-0.101562,-0.248047,-0.178711,0.0271,-0.199219,0.0271,-0.061035,-0.119629,0.273438,0.009033,-0.230469,-0.105957,0.03833,-0.104004,0.022583,-0.230469,0.269531,-0.158203,0.15332,0.15332,0.182617,0.0,-0.216797,-0.126953,0.022583,0.049805,0.205078,-0.087891,0.25,-0.25,-0.126953,0.126953,0.201172,0.036133,0.052002,-0.03833,-0.105957,0.020264,0.205078,-0.234375,-0.06543,0.25,0.232422,-0.069824,-0.230469,-0.261719,0.049805,-0.216797,-0.101562,0.165039,-0.07666,-0.287109,0.239258,0.074707,0.045166,0.232422,0.105957,0.211914,-0.126953,0.06543,-0.246094,-0.162109,0.006775,0.104004,0.090332,-0.015869,-0.117188,-0.024902,-0.196289,0.074707,0.132812,0.029297,-0.214844,0.223633,-0.244141,0.105957,0.15332,0.042969,-0.03833,0.036133,0.248047,0.168945,-0.022583,0.061035,0.194336,-0.255859,-0.058594,-0.01355,-0.15332,0.22168,0.196289,0.101562,0.144531,-0.061035,0.01355,-0.185547,-0.090332,0.21875,-0.011292,0.22168,-0.112793,-0.208008,-0.099609,0.090332,-0.072266,-0.261719,0.25,0.054199,0.004517,0.011292,-0.265625,0.239258,-0.004517,0.092773,0.040527,0.042969,0.142578,-0.022583,0.004517,0.237305,-0.085938,-0.092773,0.020264,0.196289,0.15625,0.117188,-0.069824,-0.158203,0.024902,-0.069824,-0.081055,0.201172,-0.042969,0.234375,0.069824,-0.283203,-0.097168,0.033936,-0.0271,-0.047363,-0.22168,-0.018066,0.142578,0.208008,0.160156,-0.216797,0.1875,0.124023,0.061035,0.009033,0.101562,0.06543,0.166992,0.287109,-0.117188,0.081055,-0.094727,-0.115234,-0.130859,-0.166992,0.232422,0.119629,0.0271,0.225586,0.029297,-0.192383,-0.237305,0.063477,0.119629,-0.119629,0.074707,-0.063477,-0.237305,-0.149414,0.018066,0.211914,0.283203,-0.15625,0.12207,-0.097168,-0.092773,0.009033,0.0,-0.248047,0.083496,0.104004,0.225586,-0.239258,-0.263672,-0.168945,-0.11084,-0.158203,0.029297,-0.097168]},"g_norm1":{"shape":[8],"axes":["h"],"kind":"weight","desc":"input RMSNorm scale","decimals":5,"data":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]},"g_qnorm":{"shape":[16],"axes":["d"],"kind":"weight","desc":"q_norm scale","decimals":5,"data":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]},"g_knorm":{"shape":[16],"axes":["d"],"kind":"weight","desc":"k_norm scale","decimals":5,"data":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]},"g_norm2":{"shape":[8],"axes":["h"],"kind":"weight","desc":"post-attention RMSNorm scale","decimals":5,"data":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]},"Wgate":{"shape":[32,8],"axes":["i","h"],"kind":"weight","desc":"gate_proj weight","decimals":6,"data":[0.275391,0.214844,0.003021,0.042236,-0.030273,-0.015137,0.174805,0.349609,-0.316406,0.081543,-0.310547,0.160156,0.226562,0.04541,0.229492,0.332031,0.271484,-0.069336,-0.168945,0.078613,0.214844,0.19043,-0.157227,0.171875,0.033203,-0.151367,0.168945,-0.126953,-0.304688,0.310547,0.248047,0.171875,0.160156,0.121094,-0.135742,-0.205078,0.193359,0.121094,-0.036133,0.376953,-0.275391,-0.34375,0.347656,-0.168945,0.369141,-0.369141,0.223633,-0.178711,-0.135742,0.199219,-0.349609,-0.081543,0.287109,0.09082,-0.214844,-0.117676,0.217773,0.021118,0.057373,-0.229492,0.174805,0.248047,0.033203,-0.075684,0.099609,-0.108887,0.205078,-0.018066,0.255859,0.02417,0.382812,0.375,-0.308594,0.102539,-0.314453,-0.259766,0.148438,0.371094,0.075684,-0.289062,0.238281,0.277344,0.332031,-0.365234,0.214844,-0.199219,0.353516,-0.208008,-0.078613,-0.054443,0.015137,0.296875,-0.238281,-0.332031,0.275391,0.28125,-0.349609,0.253906,0.05127,-0.04834,0.129883,0.072266,-0.015137,0.012085,-0.275391,0.238281,0.057373,-0.163086,0.289062,0.193359,-0.386719,0.289062,-0.238281,-0.174805,-0.148438,-0.148438,-0.060547,0.211914,0.157227,-0.263672,0.033203,0.380859,0.275391,-0.283203,-0.347656,-0.382812,-0.171875,0.202148,0.226562,-0.099609,0.166016,0.141602,0.132812,0.072266,0.105957,0.084473,0.269531,0.102539,0.347656,-0.255859,-0.265625,-0.027222,0.09375,-0.069336,-0.163086,0.34375,0.292969,0.05127,0.310547,-0.168945,0.242188,-0.066406,-0.316406,-0.277344,-0.057373,0.208008,0.072266,0.248047,0.253906,-0.069336,-0.275391,0.030273,-0.117676,0.160156,-0.141602,0.054443,0.132812,-0.298828,0.151367,0.132812,-0.353516,-0.245117,-0.18457,0.353516,-0.193359,-0.347656,-0.324219,0.269531,-0.04541,0.242188,-0.033203,-0.275391,-0.248047,-0.214844,0.365234,-0.205078,-0.292969,-0.217773,0.337891,0.009033,-0.151367,-0.003021,-0.337891,-0.310547,-0.376953,0.066406,-0.242188,0.0,0.04541,-0.018066,-0.359375,0.006042,0.141602,0.121094,-0.126953,0.34375,0.283203,-0.19043,-0.144531,-0.015137,-0.087402,0.359375,0.129883,-0.006042,-0.060547,-0.036133,-0.157227,-0.298828,0.036133,-0.277344,-0.226562,0.09668,-0.108887,0.326172,-0.308594,-0.148438,0.09082,-0.148438,-0.283203,0.009033,0.04541,-0.223633,-0.326172,-0.09668,-0.375,-0.357422,-0.193359,0.163086,0.138672,-0.310547,-0.238281,0.375,0.066406,-0.063477,0.006042,-0.269531,0.135742,0.205078,-0.124023,0.135742,-0.314453,-0.255859,-0.245117,-0.02417,0.072266,-0.039307]},"Wup":{"shape":[32,8],"axes":["i","h"],"kind":"weight","desc":"up_proj weight","decimals":6,"data":[0.05127,-0.223633,-0.144531,-0.042236,0.324219,0.099609,0.205078,-0.211914,-0.114746,0.072266,0.332031,-0.235352,-0.238281,-0.057373,0.332031,0.124023,-0.314453,-0.108887,-0.141602,-0.027222,0.25,0.102539,-0.039307,0.108887,-0.178711,-0.121094,-0.335938,-0.02417,0.205078,-0.292969,0.121094,-0.042236,0.178711,-0.174805,0.069336,-0.277344,-0.084473,0.178711,0.19043,0.217773,0.314453,0.09082,0.357422,0.330078,-0.181641,-0.015137,0.357422,0.211914,0.154297,-0.375,-0.34375,0.1875,-0.157227,-0.063477,-0.304688,-0.006042,0.263672,0.199219,0.265625,-0.099609,0.174805,-0.157227,0.326172,0.235352,0.160156,0.135742,0.157227,0.363281,-0.132812,-0.271484,-0.359375,-0.341797,0.174805,0.174805,0.253906,0.292969,-0.269531,-0.287109,-0.289062,0.208008,-0.304688,-0.1875,-0.141602,-0.229492,-0.259766,-0.072266,-0.19043,-0.154297,-0.208008,-0.275391,0.066406,-0.335938,-0.015137,-0.310547,-0.060547,0.226562,0.018066,-0.310547,-0.235352,-0.078613,0.232422,0.302734,0.157227,0.060547,0.211914,-0.229492,-0.292969,0.263672,0.012085,0.232422,0.214844,0.087402,-0.078613,0.202148,0.108887,-0.375,0.129883,0.283203,0.084473,0.138672,-0.223633,-0.304688,0.369141,-0.371094,0.072266,-0.347656,0.208008,0.121094,0.148438,0.226562,-0.277344,0.269531,-0.202148,-0.349609,0.255859,-0.02417,-0.099609,0.135742,0.196289,-0.099609,0.069336,0.226562,-0.371094,0.129883,0.0,0.066406,0.353516,0.063477,0.255859,-0.138672,0.105957,-0.181641,-0.223633,0.193359,0.078613,-0.238281,-0.337891,-0.371094,-0.054443,0.242188,-0.283203,-0.072266,-0.238281,0.277344,0.34375,-0.069336,-0.289062,-0.371094,-0.163086,0.009033,0.012085,0.04541,0.148438,-0.314453,0.220703,0.376953,-0.069336,0.320312,-0.371094,0.09082,-0.248047,-0.330078,0.012085,-0.25,0.275391,-0.193359,-0.229492,-0.324219,-0.371094,0.036133,-0.036133,-0.102539,-0.02417,-0.196289,0.330078,0.084473,-0.376953,0.027222,0.265625,0.369141,0.154297,0.202148,0.084473,-0.04834,0.376953,0.371094,0.365234,-0.208008,-0.021118,0.341797,0.09375,-0.275391,-0.275391,-0.114746,-0.349609,0.178711,-0.226562,-0.380859,-0.335938,-0.181641,0.287109,-0.102539,-0.069336,0.349609,0.075684,0.04834,-0.298828,0.193359,-0.04834,0.229492,0.298828,0.02417,-0.030273,0.18457,-0.375,0.208008,-0.030273,0.05127,0.202148,-0.375,0.205078,0.25,-0.208008,0.298828,-0.196289,0.365234,0.335938,0.148438,-0.081543,0.341797,0.09082,0.245117,0.078613,-0.253906,-0.18457,-0.039307]},"Wdown":{"shape":[8,32],"axes":["h","i"],"kind":"weight","desc":"down_proj weight","decimals":6,"data":[-0.376953,-0.1875,-0.111816,0.263672,-0.102539,-0.168945,0.253906,-0.078613,0.34375,-0.09668,-0.144531,-0.178711,0.320312,-0.332031,-0.135742,-0.126953,-0.087402,-0.057373,-0.263672,-0.337891,-0.105957,0.09668,-0.223633,-0.171875,-0.226562,0.316406,0.277344,0.04834,-0.066406,-0.168945,0.151367,-0.217773,0.09082,0.349609,0.337891,0.015137,0.242188,-0.042236,0.349609,-0.033203,0.265625,0.069336,-0.332031,0.04541,0.166016,0.042236,-0.060547,-0.332031,-0.208008,-0.084473,0.04834,0.316406,0.006042,0.084473,0.275391,-0.178711,-0.135742,0.111816,0.060547,0.129883,-0.174805,0.353516,-0.347656,0.202148,0.296875,0.012085,-0.208008,0.04541,-0.335938,-0.09082,-0.229492,0.332031,0.211914,0.292969,-0.214844,-0.263672,0.012085,-0.111816,-0.365234,-0.320312,0.28125,0.289062,-0.380859,0.332031,0.289062,-0.178711,0.060547,0.275391,0.102539,0.075684,-0.117676,-0.320312,0.166016,-0.28125,0.178711,0.042236,-0.18457,0.275391,0.363281,0.232422,0.129883,0.245117,0.141602,0.226562,-0.148438,-0.108887,0.154297,-0.129883,-0.310547,0.365234,0.357422,-0.135742,0.09082,0.121094,0.376953,-0.030273,0.021118,-0.04541,-0.141602,-0.25,0.330078,-0.382812,0.069336,0.289062,0.353516,0.302734,0.359375,-0.332031,-0.04834,-0.138672,0.117676,0.108887,0.304688,0.277344,-0.229492,0.223633,-0.337891,0.160156,-0.287109,-0.382812,0.05127,-0.033203,-0.069336,-0.09375,0.220703,0.033203,0.09375,-0.242188,0.018066,0.114746,-0.232422,0.178711,0.28125,-0.304688,-0.253906,0.015137,0.269531,0.09082,0.160156,-0.324219,-0.04541,0.199219,-0.359375,0.021118,0.1875,-0.087402,0.235352,0.304688,-0.117676,-0.292969,-0.217773,-0.349609,0.349609,-0.229492,-0.021118,-0.269531,-0.263672,-0.04834,0.124023,-0.275391,-0.18457,0.099609,0.365234,0.181641,-0.108887,-0.168945,0.335938,-0.117676,0.265625,0.135742,0.19043,0.269531,-0.003021,-0.105957,-0.009033,-0.238281,-0.211914,-0.253906,-0.1875,0.199219,-0.108887,0.05127,0.111816,0.196289,0.126953,-0.289062,0.0,-0.09668,-0.168945,0.117676,-0.105957,-0.141602,0.108887,-0.226562,0.036133,-0.154297,0.19043,0.349609,-0.369141,-0.253906,0.226562,-0.310547,-0.154297,0.229492,0.105957,0.168945,0.196289,0.214844,0.245117,-0.242188,0.283203,0.289062,-0.308594,0.232422,0.015137,-0.349609,-0.365234,0.069336,0.263672,-0.006042,-0.302734,0.28125,0.117676,0.369141,-0.337891,0.310547,0.09082,0.242188,0.376953,0.144531,0.124023,-0.275391,0.171875,0.376953,0.121094,0.296875]},"cos":{"shape":[5,16],"axes":["t","d"],"kind":"weight","desc":"RoPE cos table for positions 0..t-1","decimals":5,"data":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,0.5403,0.98423,0.9995,0.99998,1.0,1.0,1.0,1.0,0.5403,0.98423,0.9995,0.99998,1.0,1.0,1.0,1.0,-0.41615,0.93742,0.998,0.99994,1.0,1.0,1.0,1.0,-0.41615,0.93742,0.998,0.99994,1.0,1.0,1.0,1.0,-0.98999,0.86104,0.9955,0.99986,1.0,1.0,1.0,1.0,-0.98999,0.86104,0.9955,0.99986,1.0,1.0,1.0,1.0,-0.65364,0.75751,0.99201,0.99975,0.99999,1.0,1.0,1.0,-0.65364,0.75751,0.99201,0.99975,0.99999,1.0,1.0,1.0]},"sin":{"shape":[5,16],"axes":["t","d"],"kind":"weight","desc":"RoPE sin table","decimals":5,"data":[0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.84147,0.17689,0.03162,0.00562,0.001,0.00018,3e-05,1e-05,0.84147,0.17689,0.03162,0.00562,0.001,0.00018,3e-05,1e-05,0.9093,0.34821,0.0632,0.01125,0.002,0.00036,6e-05,1e-05,0.9093,0.34821,0.0632,0.01125,0.002,0.00036,6e-05,1e-05,0.14112,0.50854,0.09473,0.01687,0.003,0.00053,9e-05,2e-05,0.14112,0.50854,0.09473,0.01687,0.003,0.00053,9e-05,2e-05,-0.7568,0.65283,0.12615,0.02249,0.004,0.00071,0.00013,2e-05,-0.7568,0.65283,0.12615,0.02249,0.004,0.00071,0.00013,2e-05]},"g_final":{"shape":[8],"axes":["h"],"kind":"weight","desc":"final RMSNorm scale","decimals":5,"data":[1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0]},"W_lm_top5":{"shape":[5,8],"axes":["v","h"],"kind":"weight","desc":"the 5 rows of lm_head (out of 151,936) for the top-5 tokens","decimals":8,"data":[0.00619507,0.00613403,-0.00595093,-0.00604248,-0.00127411,0.0055542,-0.00585938,-0.00358582,0.00476074,0.00595093,-0.00622559,-0.0055542,-0.00274658,-0.00436401,-0.00482178,-0.00628662,0.00610352,0.00506592,-0.00595093,-0.00466919,-0.00309753,0.00436401,-0.00387573,-0.00610352,0.00598145,0.00595093,-0.00382996,-0.00349426,-0.00210571,0.00509644,-0.00628662,-0.00531006,0.00509644,0.00610352,-0.00558472,-0.00598145,-0.00157166,-0.00171661,-0.00564575,-0.00411987]}}};</script>
+<script>
+"use strict";
+/* ===================================================================== */
+/*  PART 1. Data and math. No DOM here, so the same code runs in Node.   */
+/* ===================================================================== */
+const CFG=DATA.meta.config, NT=DATA.meta.ids.length, TOKS=DATA.meta.tokens;
+const HD=CFG.head_dim, NQ=CFG.heads, NK=CFG.kv_heads, GRP=NQ/NK, HID=CFG.hidden, MLP=CFG.mlp;
+const LET="btshnkdivo";
+const AXM={b:"batch (how many texts at once)",t:"token position (the token that asks)",s:"token position (the token being looked at)",
+ h:"hidden: the numbers that describe one token",n:"query head",k:"key/value head",d:"numbers inside one head",
+ i:"width of the MLP",v:"a word of the vocabulary",o:"output feature (toy examples)"};
+
+function finish(T){const st=[];let s=1;for(let i=T.shape.length-1;i>=0;i--){st[i]=s;s*=T.shape[i]}T.strides=st;T.size=s;return T}
+function load(key,o){
+  const axes=[],shape=[];
+  o.axes.forEach((a,i)=>{if(a==="b"&&o.shape[i]===1)return;axes.push(a);shape.push(o.shape[i])});
+  const T={key,axes,shape,data:o.data,kind:o.kind,desc:o.desc,split:o.split||null,labels:null,real:true};
+  if(axes.includes("t")||axes.includes("s")){T.labels={t:TOKS,s:TOKS}}
+  return finish(T);
+}
+const R={};for(const k of Object.keys(DATA.tensors))R[k]=load(k,DATA.tensors[k]);
+function tv(T,o){let p=0;for(let i=0;i<T.axes.length;i++){const a=T.axes[i],x=o[a];
+  if(!(x>=0&&x<T.shape[i]))throw new Error("bad index "+T.key+" "+a+"="+x);p+=x*T.strides[i]}return T.data[p]}
+const V=(k,o)=>tv(R[k],o);
+const sum=a=>a.reduce((x,y)=>x+y,0);
+const colorize=s=>String(s).replace(/\b([btshnkdivo])\b/g,'<span class="dim dim-$1">$1</span>');
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const fx=x=>Math.abs(x)>=1e8?"−∞":String(+x.toPrecision(3));
+const fy=x=>Math.abs(x)>=1e8?"−∞":String(+x.toPrecision(6));
+const axName=a=>a==="nd"?colorize("(n d)"):a==="kd"?colorize("(k d)"):colorize(a);
+const IDX=o=>Object.keys(o).map(a=>`${axName(a)}=${o[a]}`).join(", ");
+const nm=(k,o)=>`<code>${k}[${IDX(o)}]</code>`;
+function termsHTML(pairs){
+  const f=p=>`${fx(p[0])} × ${fx(p[1])}`;
+  const head=pairs.slice(0,4).map(f).join(" + ");
+  if(pairs.length<=4)return head;
+  return head+` + … <span class="muted">(${pairs.length} terms)</span> <details><summary>show all ${pairs.length} terms</summary>${pairs.map(f).join(" + ")}</details>`;
+}
+const listHTML=(a,n=6)=>"["+a.slice(0,n).map(fx).join(", ")+(a.length>n?", …":"")+"]";
+const RES=(title,computed,stored,lines,used)=>({title,computed,stored,lines,used:used||[]});
+
+/* ---- recompute functions: one per real tensor, keyed by tensor name ---- */
+const CHK={};
+function rmsChk(outK,inK,gK,ax){
+  return i=>{
+    const n=R[inK].shape[R[inK].axes.indexOf(ax)],base={...i},xs=[];
+    for(let j=0;j<n;j++){base[ax]=j;xs.push(V(inK,base))}
+    const ms=sum(xs.map(x=>x*x))/n,r=Math.sqrt(ms+CFG.eps),w=V(gK,{[ax]:i[ax]}),x=xs[i[ax]],c=x/r*w;
+    const rest={...i};delete rest[ax];
+    return RES(`${nm(outK,i)} = x ÷ rms × w`,c,V(outK,i),[
+      `x = the ${n} numbers of ${inK} along ${axName(ax)}: ${listHTML(xs,5)}`,
+      `mean of squares = ${fy(ms)}`,
+      `rms = √(${fy(ms)} + ${CFG.eps}) = ${fy(r)}`,
+      `${outK} = x[${ax}=${i[ax]}] ÷ rms × w = ${fy(x)} ÷ ${fy(r)} × ${fy(w)} = ${fy(c)}`
+    ],[{k:inK,where:rest},{k:gK,where:{[ax]:i[ax]}}]);
+  };
+}
+function linChk(outK,inK,wK,sel){ /* sel(i) -> {w: weight index without h/i, row: input index without contraction axis, ax: contraction axis, n} */
+  return i=>{
+    const s=sel(i),pairs=[];
+    for(let j=0;j<s.n;j++)pairs.push([V(inK,{...s.row,[s.ax]:j}),V(wK,{...s.w,[s.ax]:j})]);
+    const c=sum(pairs.map(p=>p[0]*p[1]));
+    return RES(`${nm(outK,i)} = Σ over ${axName(s.ax)} of ${inK} × ${wK}`,c,V(outK,i),[
+      ...(s.note?[s.note]:[]),
+      `inputs: ${inK}[${IDX(s.row)}, ${axName(s.ax)}=…] and weights ${wK}[${IDX(s.w)}, ${axName(s.ax)}=…]`,
+      termsHTML(pairs)+` = <b>${fy(c)}</b>`
+    ],[{k:inK,where:s.row},{k:wK,where:s.w}]);
+  };
+}
+CHK.x0=i=>{const id=DATA.meta.ids[i.t],c=V("E_rows",{t:i.t,h:i.h});
+  return RES(`${nm("x0",i)} = row ${id} of the embedding table E, column ${i.h}`,c,V("x0",i),
+    [`token t=${i.t} is "${esc(TOKS[i.t])}" and has id ${id}`,`E[${id}, h=${i.h}] = ${fy(c)}`],[{k:"E_rows",where:{t:i.t}}])};
+CHK.norm1=rmsChk("norm1","x0","g_norm1","h");
+CHK.q_lin=linChk("q_lin","norm1","Wq",i=>{const n=Math.floor(i.nd/HD),d=i.nd%HD;return{ax:"h",n:HID,row:{t:i.t},w:{n,d},note:`column nd=${i.nd} means head n=${n}, position d=${d}`}});
+CHK.k_lin=linChk("k_lin","norm1","Wk",i=>{const k=Math.floor(i.kd/HD),d=i.kd%HD;return{ax:"h",n:HID,row:{t:i.s},w:{k,d},note:`key token s=${i.s} reads row t=${i.s} of norm1. Column kd=${i.kd} means key head k=${k}, position d=${d}`}});
+CHK.v_lin=linChk("v_lin","norm1","Wv",i=>{const k=Math.floor(i.kd/HD),d=i.kd%HD;return{ax:"h",n:HID,row:{t:i.s},w:{k,d},note:`value token s=${i.s} reads row t=${i.s} of norm1. Column kd=${i.kd} means value head k=${k}, position d=${d}`}});
+const reshapeChk=(outK,inK,ax,lead,p)=>i=>{const j={[p]:i[p],[ax]:i[lead]*HD+i.d},c=V(inK,j);
+  return RES(`${nm(outK,i)} = ${inK}[${p}=${i[p]}, ${ax}=${i[lead]}×${HD}+${i.d}]`,c,V(outK,i),
+   [`No arithmetic. Head ${axName(lead)}=${i[lead]} owns columns ${i[lead]*HD} to ${i[lead]*HD+HD-1} of the flat vector.`,`${inK}[${p}=${i[p]}, ${ax}=${j[ax]}] = ${fy(c)}`],[{k:inK,where:j}])};
+CHK.q_heads=reshapeChk("q_heads","q_lin","nd","n","t");
+CHK.k_heads=reshapeChk("k_heads","k_lin","kd","k","s");
+CHK.v_heads=reshapeChk("v_heads","v_lin","kd","k","s");
+CHK.q_norm=rmsChk("q_norm","q_heads","g_qnorm","d");
+CHK.k_norm=rmsChk("k_norm","k_heads","g_knorm","d");
+const ropeChk=(outK,inK,lead,p)=>i=>{
+  const half=HD/2,d2=(i.d+half)%HD,sg=i.d<half?-1:1,x=V(inK,i),xr=V(inK,{...i,d:d2}),
+   co=V("cos",{t:i[p],d:i.d}),si=V("sin",{t:i[p],d:i.d}),c=x*co+sg*xr*si;
+  return RES(`${nm(outK,i)} = x·cos + (± partner)·sin`,c,V(outK,i),[
+    `d=${i.d} is paired with d=${d2} (half a head, ${half}, away). Sign is ${sg<0?"minus":"plus"}.`,
+    `x = ${fy(x)}, partner = ${fy(xr)}, cos[t=${i[p]},d=${i.d}] = ${fy(co)}, sin = ${fy(si)}`,
+    `${fy(x)} × ${fy(co)} ${sg<0?"−":"+"} ${fy(xr)} × ${fy(si)} = ${fy(c)}`
+  ],[{k:inK,where:{...i}},{k:inK,where:{...i,d:d2}},{k:"cos",where:{t:i[p],d:i.d}},{k:"sin",where:{t:i[p],d:i.d}}]);
+};
+CHK.q_rope=ropeChk("q_rope","q_norm","n","t");
+CHK.k_rope=ropeChk("k_rope","k_norm","k","s");
+CHK.scores=i=>{const kk=Math.floor(i.n/GRP),p=[];
+  for(let d=0;d<HD;d++)p.push([V("q_rope",{n:i.n,t:i.t,d}),V("k_rope",{k:kk,s:i.s,d})]);
+  const raw=sum(p.map(a=>a[0]*a[1])),c=raw*CFG.scale;
+  return RES(`${nm("scores",i)} = (q · key) × 1/√${HD}`,c,V("scores",i),[
+    `query head n=${i.n} reads key head k = ⌊n ÷ ${GRP}⌋ = ${kk} (heads are shared in groups of ${GRP})`,
+    `q = q_rope[n=${i.n}, t=${i.t}, :]   key = k_rope[k=${kk}, s=${i.s}, :]   (${HD} numbers each)`,
+    termsHTML(p),`sum = ${fy(raw)}, times ${CFG.scale} (that is 1/√${HD}) = <b>${fy(c)}</b>`
+  ],[{k:"q_rope",where:{n:i.n,t:i.t}},{k:"k_rope",where:{k:kk,s:i.s}}]);};
+CHK.mask=i=>{const c=i.s<=i.t?0:-1e9;
+  return RES(`${nm("mask",i)} = 0 if s ≤ t, else −∞`,c,V("mask",i),
+   [`token t=${i.t} ("${esc(TOKS[i.t])}") may look at token s=${i.s} ("${esc(TOKS[i.s])}") only if s is not later than t: ${i.s<=i.t?"yes, so 0":"no, so −∞ (stored as −1e9)"}`]);};
+CHK.weights=i=>{const z=[],zs=[];
+  for(let s=0;s<NT;s++){const m=V("mask",{t:i.t,s});z.push(V("scores",{n:i.n,t:i.t,s})+m);zs.push(V("scores",{n:i.n,t:i.t,s}))}
+  const mx=Math.max(...z),e=z.map(x=>Math.exp(x-mx)),tot=sum(e),c=e[i.s]/tot;
+  return RES(`${nm("weights",i)} = softmax over s of (score + mask)`,c,V("weights",i),[
+    `row of scores: ${listHTML(zs,5)}   mask added: ${listHTML(Array.from({length:NT},(_,s)=>V("mask",{t:i.t,s})),5)}`,
+    `exp(score − max) for each s: ${listHTML(e,5)}   (a masked entry gives 0)`,
+    `weight = ${fy(e[i.s])} ÷ ${fy(tot)} = <b>${fy(c)}</b>`,
+    `the row of weights adds to ${fy(sum(Array.from({length:NT},(_,s)=>V("weights",{n:i.n,t:i.t,s}))))}`
+  ],[{k:"scores",where:{n:i.n,t:i.t}},{k:"mask",where:{t:i.t}}]);};
+CHK.ctx=i=>{const kk=Math.floor(i.n/GRP),p=[];
+  for(let s=0;s<NT;s++)p.push([V("weights",{n:i.n,t:i.t,s}),V("v_heads",{k:kk,s,d:i.d})]);
+  const c=sum(p.map(a=>a[0]*a[1]));
+  return RES(`${nm("ctx",i)} = Σ over s of weights × values`,c,V("ctx",i),[
+    `value head k = ⌊${i.n} ÷ ${GRP}⌋ = ${kk}`,termsHTML(p)+` = <b>${fy(c)}</b>`],
+    [{k:"weights",where:{n:i.n,t:i.t}},{k:"v_heads",where:{k:kk,d:i.d}}]);};
+CHK.ctx_flat=i=>{const n=Math.floor(i.nd/HD),d=i.nd%HD,c=V("ctx",{n,t:i.t,d});
+  return RES(`${nm("ctx_flat",i)} = ctx[n=${n}, t=${i.t}, d=${d}]`,c,V("ctx_flat",i),[`No arithmetic: the heads are placed side by side. Column ${i.nd} is head ${n}, position ${d}.`],[{k:"ctx",where:{n,t:i.t,d}}]);};
+CHK.attn_out=i=>{const p=[];
+  for(let n=0;n<NQ;n++)for(let d=0;d<HD;d++)p.push([V("ctx",{n,t:i.t,d}),V("Wo",{h:i.h,n,d})]);
+  const c=sum(p.map(a=>a[0]*a[1]));
+  return RES(`${nm("attn_out",i)} = Σ over n and d of ctx × Wo`,c,V("attn_out",i),[
+    `Two letters disappear (n and d), so we add ${NQ} × ${HD} = ${p.length} products.`,termsHTML(p)+` = <b>${fy(c)}</b>`],
+    [{k:"ctx",where:{t:i.t}},{k:"Wo",where:{h:i.h}}]);};
+const addChk=(o,a,b)=>i=>{const x=V(a,i),y=V(b,i),c=x+y;
+  return RES(`${nm(o,i)} = ${a} + ${b}`,c,V(o,i),[`The residual connection: add the input back. ${fy(x)} + ${fy(y)} = <b>${fy(c)}</b>`],[{k:a,where:{...i}},{k:b,where:{...i}}]);};
+CHK.res1=addChk("res1","x0","attn_out");
+CHK.norm2=rmsChk("norm2","res1","g_norm2","h");
+CHK.gate=linChk("gate","norm2","Wgate",i=>({ax:"h",n:HID,row:{t:i.t},w:{i:i.i}}));
+CHK.up=linChk("up","norm2","Wup",i=>({ax:"h",n:HID,row:{t:i.t},w:{i:i.i}}));
+CHK.act=i=>{const g=V("gate",i),c=g/(1+Math.exp(-g));
+  return RES(`${nm("act",i)} = SiLU(gate) = g ÷ (1 + e^−g)`,c,V("act",i),[`g = ${fy(g)}, so ${fy(g)} ÷ (1 + e^${fy(-g)}) = <b>${fy(c)}</b>`],[{k:"gate",where:{...i}}]);};
+CHK.act_up=i=>{const a=V("act",i),u=V("up",i),c=a*u;
+  return RES(`${nm("act_up",i)} = SiLU(gate) × up`,c,V("act_up",i),[`${fy(a)} × ${fy(u)} = <b>${fy(c)}</b>. The gate decides how much of "up" passes.`],[{k:"act",where:{...i}},{k:"up",where:{...i}}]);};
+CHK.down=linChk("down","act_up","Wdown",i=>({ax:"i",n:MLP,row:{t:i.t},w:{h:i.h}}));
+CHK.res2=addChk("res2","res1","down");
+CHK.final_norm=rmsChk("final_norm","layer1_out","g_final","h");
+CHK.logits_top5=i=>{const p=[],t=NT-1;
+  for(let h=0;h<HID;h++)p.push([V("final_norm",{t,h}),V("W_lm_top5",{v:i.v,h})]);
+  const c=sum(p.map(a=>a[0]*a[1]));
+  return RES(`${nm("logits_top5",i)} = final_norm[last token] · lm_head row`,c,V("logits_top5",i),[
+    `candidate token ${i.v+1} is "${esc(DATA.meta.top5.tokens[i.v])}" (id ${DATA.meta.top5.ids[i.v]}). Only the last token (t=${t}) predicts the next word.`,
+    termsHTML(p)+` = <b>${fy(c)}</b>`],[{k:"final_norm",where:{t}},{k:"W_lm_top5",where:{v:i.v}}]);};
+const hasChk=k=>typeof CHK[k]==="function";
+
+/* ---- tiny hand-made tensors for the first lessons ---- */
+function toy(key,axes,nested,o){
+  o=o||{};const shape=[];let a=nested;for(let i=0;i<axes.length;i++){shape.push(a.length);a=a[0]}
+  const data=[];(function f(x){Array.isArray(x)?x.forEach(f):data.push(x)})(nested);
+  return finish({key,axes,shape,data,kind:"toy",desc:o.desc||"",split:o.split||null,labels:null,nested:o.keepNested?nested:null,real:false});
+}
+const TOYS=(()=>{
+  const sc=toy("s",[],3.5,{keepNested:true});
+  const vec=toy("v",["h"],[2,-1,0.5,3],{keepNested:true});
+  const Mat=toy("M",["t","h"],[[1,2,3,4],[5,6,7,8],[9,10,11,12]],{keepNested:true});
+  const Blk=toy("B",["n","t","h"],[[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[-1,0,1,2],[3,4,5,6],[7,8,9,10]]],{keepNested:true});
+  const A=toy("A",["t","h"],[[1,2,3],[4,5,6]]),Bm=toy("B2",["t","h"],[[2,0,1],[1,-1,2]]);
+  const P=toy("P",["t","h"],A.nested?[]:[[2,0,3],[4,-5,12]]);
+  const Sh=toy("S",["t"],[5,11]),St=toy("S2",["h"],[6,-5,15]);
+  const dx=toy("x",["h"],[1,2,3]),dw=toy("w",["h"],[4,5,6]),dd=toy("dot",[],32);
+  const X=toy("X",["t","h"],[[1,2,3],[0,1,-1]]),W=toy("W",["h","o"],[[1,0],[2,1],[0,-1]]),Y=toy("Y",["t","o"],[[5,-1],[2,2]]);
+  const Xf=toy("X",["t","nd"],[[1,2,3,4,5,6],[7,8,9,10,11,12]],{split:{nd:["n",3]}});
+  const X3=finish({key:"X3",axes:["t","n","d"],shape:[2,2,3],data:Xf.data.slice(),kind:"toy",desc:"",split:null,labels:null,real:false});
+  const Xh=toy("Xh",["n","t","d"],[0,1].map(n=>[0,1].map(t=>[0,1,2].map(d=>Xf.data[t*6+n*3+d]))));
+  return{sc,vec,Mat,Blk,A,Bm,P,Sh,St,dx,dw,dd,X,W,Y,Xf,X3,Xh};
+})();
+
+/* ---- checks for toy parts ---- */
+function chkFlat(k,i,T){
+  const bits=T.axes.map((a,j)=>`${axName(a)}=${i[a]} × ${T.strides[j]}`),pos=T.axes.reduce((p,a,j)=>p+i[a]*T.strides[j],0);
+  let stored=T.nested;for(const a of T.axes)stored=stored[i[a]];
+  return RES(`Where does ${nm(k,i)} live in memory?`,T.data[pos],stored,[
+    `A tensor is stored as one flat list of ${T.size} numbers. The shape tells us where each cell sits.`,
+    `The step (stride) of an axis is the product of the lengths of the axes to its right.`,
+    `position = ${bits.join(" + ")||"0"} = ${pos}`,`flat list[${pos}] = ${fy(T.data[pos])}`]);
+}
+function tcheck(table){return (k,i,T)=>table[k]?table[k](i,T):null}
+
+/* ===================================================================== */
+/*  PART 2. Viewers: spreadsheet and 3D                                  */
+/* ===================================================================== */
+const SENT=1e8;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const rgb3=s=>{if(s[0]==="#"){const n=parseInt(s.slice(1),16);return[n>>16&255,n>>8&255,n&255]}return s.split(/[\s,]+/).map(Number)};
+function palette(){const g=n=>rgb3(css(n));return{pos:g("--pos"),neg:g("--neg"),panel:g("--panel"),line:g("--line"),accent:g("--accent"),warn:g("--warn"),ink:g("--ink"),muted:g("--muted"),nosee:g("--nosee"),bg:g("--bg"),ax:Object.fromEntries(LET.split("").map(c=>[c,css("--d-"+c)]))}}
+const mix=(a,b,t)=>a.map((x,i)=>Math.round(x+(b[i]-x)*t));
+const rgbs=a=>`rgb(${a[0]},${a[1]},${a[2]})`;
+const scaleOf=T=>{let m=0;for(const v of T.data){const a=Math.abs(v);if(a<SENT&&a>m)m=a}return m||1};
+function heat(v,sc,pal,amax){if(Math.abs(v)>=SENT)return pal.nosee;const t=Math.max(-1,Math.min(1,v/sc));return mix(pal.panel,t>=0?pal.pos:pal.neg,amax*Math.pow(Math.abs(t),.75))}
+function fmtCell(v){
+  if(Math.abs(v)>=SENT)return"−∞";
+  if(Number.isInteger(v)&&Math.abs(v)<1e6)return String(v);
+  const a=Math.abs(v);if(a>=100)return v.toFixed(1);if(a>=0.01||a===0)return v.toFixed(3);return v.toFixed(4);
+}
+function vsNew(T){
+  const A=T.axes,vs={row:null,col:null,fixed:{},sel:null,yaw:-0.62,pitch:0.5};
+  if(A.length>=1)vs.col=A[A.length-1];
+  if(A.length>=2)vs.row=A[A.length-2];
+  fixAll(T,vs);return vs;
+}
+function fixAll(T,vs){const f={};T.axes.forEach(a=>{if(a!==vs.row&&a!==vs.col)f[a]=vs.fixed[a]||0});vs.fixed=f}
+const cellIdx=(vs,r,c)=>{const o={...vs.fixed};if(vs.row!==null)o[vs.row]=r;if(vs.col!==null)o[vs.col]=c;return o};
+const dimOf=(T,a)=>T.shape[T.axes.indexOf(a)];
+function axHead(T,a,i){
+  const sp=T.split&&T.split[a];
+  if(sp)return`<span class="dim dim-${sp[0]}">${sp[0]}${Math.floor(i/sp[1])}</span> <span class="dim dim-d">d${i%sp[1]}</span>`;
+  const lab=T.labels&&T.labels[a]?`<small>${esc(T.labels[a][i].trim())}</small>`:"";
+  return`<span class="dim dim-${LET.includes(a)?a:"v"}">${a}</span>${i}${lab}`;
+}
+const ACTIVE=[];
+
+/* ---------------- 3D block on canvas, hand-made projection ---------------- */
+const CAP3=12;
+function draw3D(cv,T,vs,isMark){
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  if(!W||!H)return;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
+  const c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
+  const pal=palette(),sc=scaleOf(T),A=T.axes;
+  const ax={x:vs.col,y:vs.row,z:A.find(a=>a!==vs.row&&a!==vs.col)||null};
+  const sz=a=>a===null?1:dimOf(T,a);
+  const n={x:sz(ax.x),y:sz(ax.y),z:sz(ax.z)};
+  const m={x:Math.min(n.x,CAP3),y:Math.min(n.y,CAP3),z:Math.min(n.z,CAP3)};
+  const idxOf=(i,j,k)=>{const o={...vs.fixed};if(ax.x!==null)o[ax.x]=i;if(ax.y!==null)o[ax.y]=j;if(ax.z!==null)o[ax.z]=k;return o};
+  const cy=Math.cos(vs.yaw),sy=Math.sin(vs.yaw),cp=Math.cos(vs.pitch),sp=Math.sin(vs.pitch);
+  const rot=(x,y,z)=>{const x1=x*cy+z*sy,z1=-x*sy+z*cy,y2=y*cp-z1*sp,z2=y*sp+z1*cp;return[x1,y2,z2]};
+  const ext=Math.sqrt(m.x*m.x+m.y*m.y+m.z*m.z)+3.2,S=Math.min(W,H)/ext*1.15,ox=W/2,oy=H/2;
+  const prj=p=>[ox+p[0]*S,oy+p[1]*S];
+  const half=.43;
+  const dirs=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  const rn=dirs.map(d=>rot(d[0],d[1],d[2]));
+  const shade=[.8,.8,.62,1,.9,.9];
+  const cubes=[];
+  for(let i=0;i<m.x;i++)for(let j=0;j<m.y;j++)for(let k=0;k<m.z;k++){
+    const cx=i+.5-m.x/2,cyy=j+.5-m.y/2,cz=k+.5-m.z/2,r=rot(cx,cyy,cz);cubes.push({i,j,k,cx,cy:cyy,cz,z:r[2]});
+  }
+  cubes.sort((a,b)=>b.z-a.z);
+  const faces=[];cv._faces=faces;
+  const hasZ=ax.z!==null&&n.z>1,selZ=hasZ?vs.fixed[ax.z]:0;
+  const cornersOf=(cu,fi)=>{
+    const d=dirs[fi],ai=d[0]?0:d[1]?1:2,u=(ai+1)%3,w=(ai+2)%3,out=[];
+    for(const[su,sw]of[[1,1],[-1,1],[-1,-1],[1,-1]]){
+      const p=[cu.cx,cu.cy,cu.cz];p[ai]+=(d[0]+d[1]+d[2])*half;p[u]+=su*half;p[w]+=sw*half;out.push(prj(rot(p[0],p[1],p[2])));
+    }return out;
+  };
+  const poly=(pts)=>{c.beginPath();pts.forEach((p,q)=>q?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath()};
+  const top=[];
+  for(const cu of cubes){
+    const idx=idxOf(cu.i,cu.j,cu.k),v=tv(T,idx),base=heat(v,sc,pal,.92);
+    const inSel=!hasZ||cu.k===selZ,alpha=inSel?1:.34;
+    const isSel=vs.sel&&A.every(a=>vs.sel[a]===idx[a]),mk=isMark(idx);
+    for(let fi=0;fi<6;fi++){
+      if(rn[fi][2]>=0)continue;
+      const pts=cornersOf(cu,fi);
+      c.globalAlpha=alpha;c.fillStyle=rgbs(mix(base,[0,0,0],(1-shade[fi])*.55));poly(pts);c.fill();
+      c.globalAlpha=alpha*.9;c.lineWidth=.7;c.strokeStyle=rgbs(mix(pal.line,pal.ink,.25));c.stroke();
+      faces.push({pts,idx});
+      if(isSel||mk)top.push({pts,isSel,mk});
+    }
+  }
+  c.globalAlpha=1;
+  if(hasZ&&selZ<m.z){ /* outline of the selected slice */
+    const k=selZ,p=[[-m.x/2,-m.y/2],[m.x/2,-m.y/2],[m.x/2,m.y/2],[-m.x/2,m.y/2]].map(q=>prj(rot(q[0],q[1],k-m.z/2)));
+    poly(p);c.lineWidth=2;c.strokeStyle=rgbs(pal.accent);c.setLineDash([5,4]);c.stroke();c.setLineDash([]);
+  }
+  for(const f of top){if(f.mk){poly(f.pts);c.lineWidth=2.4;c.strokeStyle=rgbs(pal.warn);c.stroke()}}
+  for(const f of top){if(f.isSel){poly(f.pts);c.lineWidth=3;c.strokeStyle=rgbs(pal.accent);c.stroke()}}
+  /* axis labels and "..." marks */
+  c.font='600 12px "JetBrains Mono",ui-monospace,monospace';c.textBaseline="middle";c.textAlign="center";
+  const label=(txt,col,p)=>{const w=c.measureText(txt).width+10;c.fillStyle=rgbs(mix(pal.bg,pal.panel,.5));c.globalAlpha=.9;c.fillRect(p[0]-w/2,p[1]-9,w,18);c.globalAlpha=1;c.fillStyle=col;c.fillText(txt,p[0],p[1])};
+  const nice=a=>a==="nd"?"n·d":a==="kd"?"k·d":a;
+  const colr=a=>pal.ax[a]||css("--muted");
+  if(ax.x!==null)label(`${nice(ax.x)} (${n.x})`,colr(ax.x),prj(rot(0,m.y/2+.95,-m.z/2)));
+  if(ax.y!==null)label(`${nice(ax.y)} (${n.y})`,colr(ax.y),prj(rot(-m.x/2-1.1,0,-m.z/2)));
+  if(ax.z!==null&&n.z>1)label(`${nice(ax.z)} (${n.z})`,colr(ax.z),prj(rot(m.x/2+1,m.y/2+.2,0)));
+  c.fillStyle=rgbs(pal.muted);c.font='700 16px "JetBrains Mono",monospace';
+  if(n.x>m.x)c.fillText("…",...prj(rot(m.x/2+.6,0,-m.z/2)));
+  if(n.y>m.y)c.fillText("…",...prj(rot(0,m.y/2+.4,-m.z/2)));
+  if(n.z>m.z)c.fillText("…",...prj(rot(0,0,m.z/2+.6)));
+  const lim=[];if(n.x>m.x)lim.push(`${m.x} of ${n.x} along ${ax.x}`);if(n.y>m.y)lim.push(`${m.y} of ${n.y} along ${ax.y}`);if(n.z>m.z)lim.push(`${m.z} of ${n.z} along ${ax.z}`);
+  return lim;
+}
+function bind3D(cv,vs,redraw,pick){
+  let drag=null;
+  cv.addEventListener("pointerdown",e=>{try{cv.setPointerCapture(e.pointerId)}catch(_){}drag={x:e.clientX,y:e.clientY,m:0,yaw:vs.yaw,pitch:vs.pitch}});
+  cv.addEventListener("pointermove",e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.m=Math.max(drag.m,Math.hypot(dx,dy));
+    if(drag.m>4){vs.yaw=drag.yaw+dx*.01;vs.pitch=Math.max(-1.4,Math.min(1.4,drag.pitch+dy*.01));redraw()}});
+  cv.addEventListener("pointerup",e=>{if(drag&&drag.m<=4){const r=cv.getBoundingClientRect();pick(e.clientX-r.left,e.clientY-r.top)}drag=null});
+  cv.addEventListener("pointercancel",()=>{drag=null});
+  cv.addEventListener("keydown",e=>{const s={ArrowLeft:[-.15,0],ArrowRight:[.15,0],ArrowUp:[0,-.15],ArrowDown:[0,.15]}[e.key];
+    if(s){e.preventDefault();vs.yaw+=s[0];vs.pitch=Math.max(-1.4,Math.min(1.4,vs.pitch+s[1]));redraw()}});
+}
+function hit3D(cv,x,y){
+  const inPoly=(pts)=>{let ins=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+    const a=pts[i],b=pts[j];if(((a[1]>y)!==(b[1]>y))&&(x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]))ins=!ins}return ins};
+  const f=cv._faces||[];for(let i=f.length-1;i>=0;i--)if(inPoly(f[i].pts))return f[i].idx;return null;
+}
+
+/* ---------------- viewer: spreadsheet cards + one 3D card ---------------- */
+function mountViewer(host,list,o){
+  const st={list,cur:list[list.length-1].k,vs:{},sel:null,res:null};
+  list.forEach(e=>{st.vs[e.k]=vsNew(e.T)});
+  host.innerHTML=`<div class="vgrid">
+    <section class="vcard" aria-label="Spreadsheet view"><h4>Spreadsheet view</h4><div class="sheets"></div>
+      <div class="scalebar"><span>negative</span><i></i><span>positive</span><span>(color = value ÷ largest absolute value of that tensor)</span></div></section>
+    <section class="vcard v3" aria-label="3D view"><h4>3D view</h4><div class="chips"></div>
+      <div class="cvwrap"><canvas class="cv" tabindex="0" role="img" aria-label="3D block of cells. Drag to rotate, click a cell to select it."></canvas></div>
+      <div class="tools"><button class="btn small" type="button" data-act="reset">Reset view</button><label>Tilt <input type="range" min="-70" max="80" value="29" data-act="tilt" aria-label="Tilt"></label></div>
+      <p class="cap muted"></p></section></div>`;
+  const sheets=host.querySelector(".sheets"),chips=host.querySelector(".chips"),cv=host.querySelector("canvas"),cap=host.querySelector(".cap"),tilt=host.querySelector('[data-act="tilt"]');
+  const ent=k=>st.list.find(e=>e.k===k);
+  const isMark=k=>idx=>{const u=st.res&&st.res.used;if(!u)return false;return u.some(w=>w.k===k&&Object.keys(w.where).every(a=>!(a in idx)||idx[a]===w.where[a]))};
+  sheets.innerHTML=list.map(e=>`<div class="sheetcard" data-k="${e.k}"></div>`).join("");
+  function sheetHTML(e){
+    const T=e.T,vs=st.vs[e.k],pal=palette(),sc=scaleOf(T),mk=isMark(e.k);
+    const rows=vs.row!==null?dimOf(T,vs.row):1,cols=vs.col!==null?dimOf(T,vs.col):1;
+    const opt=(a,sel)=>T.axes.map(x=>`<option value="${x}"${x===sel?" selected":""}>${x==="nd"?"(n d)":x==="kd"?"(k d)":x}</option>`).join("");
+    let ctl="";
+    if(T.axes.length>=2)ctl+=`<label>rows <select data-sel="row">${opt(0,vs.row)}</select></label><label>columns <select data-sel="col">${opt(0,vs.col)}</select></label>`;
+    for(const a of Object.keys(vs.fixed)){
+      const n=dimOf(T,a);ctl+=`<label>slice ${axName(a)} = <select data-sel="fix" data-ax="${a}">${Array.from({length:n},(_,i)=>`<option value="${i}"${i===vs.fixed[a]?" selected":""}>${i}${T.labels&&T.labels[a]?" "+esc(T.labels[a][i].trim()):""}</option>`).join("")}</select></label>`;
+    }
+    let h=`<div class="shhead"><b>${e.k}</b><span>${esc(e.label||"")}</span><span class="shape">[${T.axes.map(axName).join(", ")||"no axes"}] shape ${T.shape.length?T.shape.join("×"):"single number"}</span></div>`;
+    if(e.desc||T.desc)h+=`<div class="shdesc">${esc(e.desc||T.desc)}</div>`;
+    if(ctl)h+=`<div class="shctl">${ctl}</div>`;
+    h+=`<div class="sheetwrap"><table class="sh"><thead><tr><th class="corner">${vs.row!==null?axName(vs.row)+" ↓ ":""}${vs.col!==null?axName(vs.col)+" →":"value"}</th>`;
+    for(let c2=0;c2<cols;c2++)h+=`<th class="${vs.sel&&vs.col!==null&&vs.sel[vs.col]===c2?"hl":""}">${vs.col!==null?axHead(T,vs.col,c2):"value"}</th>`;
+    h+=`</tr></thead><tbody>`;
+    for(let r=0;r<rows;r++){
+      h+=`<tr><th class="${vs.sel&&vs.row!==null&&vs.sel[vs.row]===r?"hl":""}">${vs.row!==null?axHead(T,vs.row,r):"–"}</th>`;
+      for(let c2=0;c2<cols;c2++){
+        const idx=cellIdx(vs,r,c2),v=tv(T,idx),isSel=st.sel&&st.sel.k===e.k&&T.axes.every(a=>st.sel.idx[a]===idx[a]);
+        h+=`<td class="gc${isSel?" sel":""}${mk(idx)?" mk":""}${Math.abs(v)>=SENT?" ninf":""}" style="background:${rgbs(heat(v,sc,pal,.55))}" data-r="${r}" data-c="${c2}">${fmtCell(v)}</td>`;
+      }
+      h+=`</tr>`;
+    }
+    h+=`</tbody></table></div><div class="cellinfo">${cellInfo(e)}</div>`;
+    return h;
+  }
+  function cellInfo(e){
+    const s=st.sel&&st.sel.k===e.k?st.sel.idx:null;
+    if(!s)return"Click a cell to see its index and full value.";
+    const v=tv(e.T,s),T=e.T,sp=Object.keys(s).filter(a=>T.split&&T.split[a]).map(a=>` (that is ${T.split[a][0]}=${Math.floor(s[a]/T.split[a][1])}, d=${s[a]%T.split[a][1]})`).join("");
+    return`<b>${e.k}[${IDX(s)}]</b>${sp} = <b>${Math.abs(v)>=SENT?"−∞ (stored as "+v+")":v}</b>`;
+  }
+  function paintSheet(e){
+    const card=sheets.querySelector(`[data-k="${e.k}"]`),w=card.querySelector(".sheetwrap"),sl=w?[w.scrollLeft,w.scrollTop]:[0,0];
+    card.innerHTML=sheetHTML(e);
+    const w2=card.querySelector(".sheetwrap");w2.scrollLeft=sl[0];w2.scrollTop=sl[1];
+  }
+  function paintChips(){
+    chips.innerHTML=list.map(e=>`<button type="button" data-k="${e.k}" aria-pressed="${e.k===st.cur}">${e.k}</button>`).join("");
+  }
+  function paint3D(){
+    const e=ent(st.cur),vs=st.vs[st.cur];tilt.value=Math.round(vs.pitch*180/Math.PI);
+    const lim=draw3D(cv,e.T,vs,isMark(st.cur));
+    cap.innerHTML=`Drag to rotate, click a cell to select it. Showing <b>${e.k}</b>${lim&&lim.length?`. To keep it readable only ${lim.join(", ")} are drawn (shown as …).`:"."} The dashed frame is the slice shown in the spreadsheet.`;
+    cv.setAttribute("aria-label",`3D block of ${e.k}, shape ${e.T.shape.join(" by ")}. Drag to rotate.`);
+  }
+  function all(){list.forEach(paintSheet);paintChips();paint3D()}
+  function select(k,idx){
+    const e=ent(k),vs=st.vs[k];
+    vs.sel=idx;for(const a of Object.keys(vs.fixed))vs.fixed[a]=idx[a];
+    st.sel={k,idx};st.cur=k;
+    st.res=o.check?o.check(k,idx,e.T):null;
+    list.forEach(x=>{if(x.k!==k)st.vs[x.k].sel=null});
+    all();
+    if(o.onSelect)o.onSelect(st);
+  }
+  sheets.addEventListener("click",ev=>{
+    const td=ev.target.closest("td.gc");if(!td)return;
+    const card=td.closest(".sheetcard"),k=card.dataset.k,e=ent(k),vs=st.vs[k];
+    select(k,cellIdx(vs,+td.dataset.r,+td.dataset.c));
+  });
+  sheets.addEventListener("change",ev=>{
+    const s=ev.target.closest("select");if(!s)return;
+    const card=s.closest(".sheetcard"),k=card.dataset.k,e=ent(k),vs=st.vs[k],T=e.T,kind=s.dataset.sel;
+    if(kind==="fix")vs.fixed[s.dataset.ax]=+s.value;
+    else{
+      const nv=s.value;
+      if(kind==="row"){if(nv===vs.col)vs.col=vs.row;vs.row=nv}else{if(nv===vs.row)vs.row=vs.col;vs.col=nv}
+      fixAll(T,vs);
+    }
+    st.cur=k;paintSheet(e);paintChips();paint3D();
+  });
+  chips.addEventListener("click",ev=>{const b=ev.target.closest("button");if(!b)return;st.cur=b.dataset.k;paintChips();paint3D()});
+  host.querySelector('[data-act="reset"]').addEventListener("click",()=>{const vs=st.vs[st.cur];vs.yaw=-.62;vs.pitch=.5;tilt.value=29;paint3D()});
+  tilt.addEventListener("input",()=>{const vs=st.vs[st.cur];vs.pitch=tilt.value*Math.PI/180;paint3D()});
+  /* one canvas, but each tensor keeps its own rotation */
+  const proxy={get yaw(){return st.vs[st.cur].yaw},set yaw(x){st.vs[st.cur].yaw=x},get pitch(){return st.vs[st.cur].pitch},set pitch(x){st.vs[st.cur].pitch=x;tilt.value=Math.round(x*180/Math.PI)}};
+  bind3D(cv,proxy,paint3D,(x,y)=>{
+    const idx=hit3D(cv,x,y);if(!idx)return;select(st.cur,idx);
+  });
+  const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(()=>paint3D()):null;if(ro)ro.observe(cv);
+  const ctl={st,select,redraw:all,destroy(){if(ro)ro.disconnect()}};
+  ACTIVE.push(ctl);
+  all();
+  if(o.sel0)select(o.sel0.k,o.sel0.idx);
+  return ctl;
+}
+const midIdx=T=>{const o={};T.axes.forEach((a,i)=>{o[a]=Math.floor(T.shape[i]/2)});return o};
+
+/* ---------------- check box ---------------- */
+function checkHTML(st,note){
+  if(!st.sel)return`<p class="muted">Click any cell of a result tensor, in the spreadsheet or in the 3D view.</p>`;
+  if(!st.res)return`<p><b>${st.sel.k}</b> is an input here, so there is nothing to recompute. Click a cell of a result tensor.</p>`;
+  const r=st.res,diff=Math.abs(r.computed-r.stored),ok=diff<1e-4;
+  return`<div class="calc"><div class="what">${r.title}</div>${r.lines.map(l=>`<div class="line">${l}</div>`).join("")}</div>
+   <div class="result ${ok?"ok":"bad"}"><span>recomputed here: <b>${fy(r.computed)}</b></span><span>stored value: <b>${fy(r.stored)}</b></span><span>difference: <b>${diff.toExponential(1)}</b></span><span class="verdict">${ok?"They match (within 0.0001)":"Mismatch"}</span></div>`;
+}
+
+/* ===================================================================== */
+/*  PART 3. Lessons                                                      */
+/* ===================================================================== */
+const X0=R.x0;
+const tokensStr=TOKS.map(t=>`"${esc(t)}"`).join(", ");
+const E=(label)=>label;
+const ent=(k,T,label,desc)=>({k,T,label,desc});
+const real=(k,label)=>ent(k,R[k],label);
+const realCheck=(k,i)=>hasChk(k)?CHK[k](i):null;
+
+/* toy check tables */
+const toyChecks={
+  flat:(k,i,T)=>chkFlat(k,i,T),
+  elem:{P:(i)=>{const a=V0(TOYS.A,i),b=V0(TOYS.Bm,i),c=a*b;return RES(`${nm("P",i)} = A × B (same place)`,c,V0(TOYS.P,i),[`A[${IDX(i)}] × B[${IDX(i)}] = ${fx(a)} × ${fx(b)} = <b>${fx(c)}</b>`],[{k:"A",where:i},{k:"B2",where:i}])}},
+  sumh:{S:(i)=>{const v=[0,1,2].map(h=>V0(TOYS.P,{t:i.t,h}));const c=sum(v);return RES(`${nm("S",i)} = sum over h of P`,c,V0(TOYS.Sh,i),[`Letter h is on the left but not on the right, so it is summed.`,`S[t=${i.t}] = ${v.map(fx).join(" + ")} = <b>${fx(c)}</b>`],[{k:"P",where:{t:i.t}}])}},
+  sumt:{S2:(i)=>{const v=[0,1].map(t=>V0(TOYS.P,{t,h:i.h}));const c=sum(v);return RES(`${nm("S2",i)} = sum over t of P`,c,V0(TOYS.St,i),[`Now t disappears, so t is summed and h stays.`,`S2[h=${i.h}] = ${v.map(fx).join(" + ")} = <b>${fx(c)}</b>`],[{k:"P",where:{h:i.h}}])}},
+  dot:{dot:()=>{const p=[0,1,2].map(h=>[V0(TOYS.dx,{h}),V0(TOYS.dw,{h})]),c=sum(p.map(a=>a[0]*a[1]));return RES(`dot = sum over h of x × w`,c,TOYS.dd.data[0],[`Multiply the cells that share the same h, then add.`,p.map(a=>`${fx(a[0])}×${fx(a[1])}`).join(" + ")+` = <b>${fx(c)}</b>`],[{k:"x",where:{}},{k:"w",where:{}}])}},
+  mm:{Y:(i)=>{const p=[0,1,2].map(h=>[V0(TOYS.X,{t:i.t,h}),V0(TOYS.W,{h,o:i.o})]),c=sum(p.map(a=>a[0]*a[1]));
+    return RES(`${nm("Y",i)} = sum over h of X[t,h] × W[h,o]`,c,V0(TOYS.Y,i),[`Take row t=${i.t} of X and column o=${i.o} of W. Multiply pair by pair, then add.`,p.map(a=>`${fx(a[0])}×${fx(a[1])}`).join(" + ")+` = <b>${fx(c)}</b>`],[{k:"X",where:{t:i.t}},{k:"W",where:{o:i.o}}])}},
+  split:{X3:(i)=>{const j={t:i.t,nd:i.n*3+i.d},c=V0(TOYS.Xf,j);return RES(`${nm("X3",i)} = X[t=${i.t}, nd=${j.nd}]`,c,V0(TOYS.X3,i),[`Column nd = n × 3 + d = ${i.n} × 3 + ${i.d} = ${j.nd}. The numbers do not move. Only the way we count them changes.`],[{k:"X",where:j}])}},
+  tr:{Xh:(i)=>{const c=V0(TOYS.X3,{t:i.t,n:i.n,d:i.d});return RES(`${nm("Xh",i)} = X3[t=${i.t}, n=${i.n}, d=${i.d}]`,c,V0(TOYS.Xh,i),[`Same number, new place: the axes are only listed in a different order.`],[{k:"X3",where:{t:i.t,n:i.n,d:i.d}}])}}
+};
+function V0(T,o){return tv(T,o)}
+
+const sm=a=>{const m=Math.max(...a),e=a.map(x=>Math.exp(x-m)),s=sum(e);return e.map(x=>x/s)};
+const f3=x=>x.toFixed(4);
+
+const LESSONS=[
+/* ---------------------------------- 1 ---------------------------------- */
+{title:"A tensor is a grid of numbers",
+ intro:`<p>A <b>tensor</b> is a box of numbers. That is all it is. Every direction of the box gets a name, called an <b>axis</b>. The <b>shape</b> says how long each axis is.</p>
+  <p>We will use one letter per axis. The same letter always has the same color, in every lesson. In a language model, <span class="dim dim-t">t</span> is the position of a token in the text and <span class="dim dim-h">h</span> is the list of numbers that describe one token.</p>`,
+ parts:[
+  {title:"Scalar and vector",text:`A <b>scalar</b> has no axis. It is one number. A <b>vector</b> has one axis. Here the axis is <span class="dim dim-h">h</span>, it is 4 cells long, so the shape is [4]. Click a cell.`,
+   formula:`scalar: no axes, shape [ ]        vector: one axis, shape [4]`,
+   tensors:[ent("s",TOYS.sc,"scalar: just one number"),ent("v",TOYS.vec,"vector: a row of numbers")],check:(k,i,T)=>chkFlat(k,i,T)},
+  {title:"Matrix",text:`A <b>matrix</b> has two axes. Rows go along <span class="dim dim-t">t</span>, columns go along <span class="dim dim-h">h</span>. The shape is [3, 4]: 3 rows and 4 columns. The cell in row 2, column 1 has the index (t=2, h=1).`,
+   formula:`matrix M: axes t, h    shape [3, 4]    12 numbers`,
+   tensors:[ent("M",TOYS.Mat,"matrix with 3 rows (t) and 4 columns (h)")],check:(k,i,T)=>chkFlat(k,i,T)},
+  {title:"3D block",text:`A 3D tensor with three axes is a stack of matrices. Axis <span class="dim dim-n">n</span> says which matrix, <span class="dim dim-t">t</span> the row and <span class="dim dim-h">h</span> the column. The shape is [2, 3, 4]. Drag the block to rotate it. The dashed frame in the 3D view is the slice you see in the spreadsheet. Change it with the <i>slice</i> menu.`,
+   formula:`block B: axes n, t, h    shape [2, 3, 4]    24 numbers`,
+   tensors:[ent("B",TOYS.Blk,"two matrices stacked (axis n)")],check:(k,i,T)=>chkFlat(k,i,T)},
+  {title:"A real tensor",text:`Now a real one. We gave the tiny Qwen3 model the text <b>${esc(DATA.meta.text)}</b>. It cut it into 5 tokens (${tokensStr}). The embedding step turns each token into 8 numbers. So the tensor has the shape [5, 8], with axes <span class="dim dim-t">t</span> and <span class="dim dim-h">h</span>. These numbers are real and come from the file <code>tensors.json</code>.`,
+   formula:`x0: axes t, h    shape [5, 8]    40 numbers    (b = 1 is dropped)`,
+   tensors:[real("x0","embedding of the 5 tokens")],check:realCheck,
+   note:`The model also has a batch axis <span class="dim dim-b">b</span> (how many texts run together). Here b = 1, so we do not draw it.`}
+ ]},
+/* ---------------------------------- 2 ---------------------------------- */
+{title:"Elementwise operations and sums",
+ intro:`<p>Two simple things can happen to tensors. Either you combine cells that sit in the same place (<b>elementwise</b>), or you add up cells along one axis (<b>sum over an axis</b>).</p>
+  <p>This is also where we meet <b>einsum</b>. An einsum string names the axes of every input and of the output. The one rule: <b>a letter that is on the left but not on the right is summed away</b>.</p>`,
+ parts:[
+  {title:"Elementwise",text:`Multiply A and B cell by cell. The result has the same shape. Click a cell of <b>P</b> to see which two cells were multiplied.`,
+   ein:"t h, t h -> t h",
+   tensors:[ent("A",TOYS.A,"input"),ent("B2",TOYS.Bm,"input"),ent("P",TOYS.P,"result: A × B")],check:tcheck(toyChecks.elem)},
+  {title:"Sum over h",text:`Take P from the last part and add up each row. The letter <span class="dim dim-h">h</span> is on the left but not on the right, so it disappears. It was summed. Axis <span class="dim dim-t">t</span> stays, so we get one number for each t.`,
+   ein:"t h -> t",
+   tensors:[ent("P",TOYS.P,"input (from the last part)"),ent("S",TOYS.Sh,"result: one number per t")],check:tcheck(toyChecks.sumh)},
+  {title:"Sum over t",text:`Same P, but now <span class="dim dim-t">t</span> disappears. We add down each column. One number is left for each <span class="dim dim-h">h</span>. The letter that you drop decides which direction is added.`,
+   ein:"t h -> h",
+   tensors:[ent("P",TOYS.P,"input"),ent("S2",TOYS.St,"result: one number per h")],check:tcheck(toyChecks.sumt)}
+ ]},
+/* ---------------------------------- 3 ---------------------------------- */
+{title:"Dot product and matrix multiply",
+ intro:`<p>A <b>dot product</b> multiplies two vectors cell by cell and adds the results. In einsum: <span class="einsum" style="display:inline;padding:2px 6px">${colorize("h, h ->")}</span>. The letter h is on the left twice and not on the right, so it is summed.</p>
+  <p>A <b>matrix multiply</b> does a dot product for every pair of a row of X and a column of W. This is the main operation of a neural network. Almost every weight in a transformer is used this way.</p>`,
+ parts:[
+  {title:"Dot product",text:`x and w each have 3 cells along <span class="dim dim-h">h</span>. Multiply the cells that share an h, then add. The result has no axis, so it is a scalar.`,
+   ein:"h, h ->",tensors:[ent("x",TOYS.dx,"vector"),ent("w",TOYS.dw,"vector"),ent("dot",TOYS.dd,"result: a scalar")],check:tcheck(toyChecks.dot),sel0:{k:"dot",idx:{}}},
+  {title:"Matrix multiply",text:`Each output cell is a dot product. <b>Click a cell of Y.</b> The row of X and the column of W that were used turn orange, and the multiply-add is shown below.`,
+   ein:"t h, h o -> t o",tensors:[ent("X",TOYS.X,"input: 2 tokens × 3 numbers"),ent("W",TOYS.W,"weights: 3 inputs × 2 outputs"),ent("Y",TOYS.Y,"result: 2 tokens × 2 outputs")],check:tcheck(toyChecks.mm),sel0:{k:"Y",idx:{t:1,o:1}}},
+  {title:"In the real model",text:`The first step of attention is the same maths. The normalized token <b>norm1</b> (5 × 8) is multiplied by the query weights <b>Wq</b> to give <b>q_lin</b> (5 × 64). PyTorch stores a weight as [out, in], so the weight has h last: in the spreadsheet of Wq, one <i>row</i> (fixed n and d) is the vector that gets multiplied. It is the same dot product, with the weight turned on its side. The 64 output columns are 4 heads of 16 numbers each (lesson 4).`,
+   ein:"t h, (n d) h -> t (n d)",tensors:[real("norm1","input"),real("Wq","weights, layout [n d h]"),real("q_lin","result: all 4 query heads in one row")],check:realCheck,sel0:{k:"q_lin",idx:{t:2,nd:21}}}
+ ]},
+/* ---------------------------------- 4 ---------------------------------- */
+{title:"Reshape and transpose",
+ intro:`<p>Not every operation does arithmetic. <b>Reshape</b> and <b>transpose</b> only change how we <i>look</i> at the same numbers. Attention uses them to split one long vector per token into several <b>heads</b>.</p>
+  <p>The notation <span class="mono">(n d)</span> in einsum means "two axes glued into one". Position <span class="mono">n</span>×(length of d)+<span class="mono">d</span> in the glued axis. Think of numbering the houses in a street: house 17 is the same house as "block 2, number 5".</p>`,
+ parts:[
+  {title:"Split into heads",text:`X has 6 numbers per token. We split them into n=2 heads with d=3 numbers each. The flat list of numbers is exactly the same. Click a cell of X3: it points back to one cell of X. In the spreadsheet of X, the column header shows both readings (for example n1 d2 is column 5).`,
+   ein:"t (n d) -> t n d",tensors:[ent("X",TOYS.Xf,"input, 6 columns glued from (n d)"),ent("X3",TOYS.X3,"result: same numbers, 3 axes")],check:tcheck(toyChecks.split),sel0:{k:"X3",idx:{t:1,n:1,d:1}}},
+  {title:"Move the heads first",text:`Attention wants the head axis at the front, so every head can be handled on its own. We only reorder the axes. Look at the 3D view of X3 and then of Xh: the block is the same, turned around.`,
+   ein:"t n d -> n t d",tensors:[ent("X3",TOYS.X3,"input"),ent("Xh",TOYS.Xh,"result: heads first")],check:tcheck(toyChecks.tr),sel0:{k:"Xh",idx:{n:1,t:0,d:2}}},
+  {title:"In the real model",text:`The real query vectors are split in the same way: 64 numbers per token become 4 heads × 16 numbers. <b>q_lin</b> has shape [t, (n d)] = [5, 64]. <b>q_heads</b> has shape [n, t, d] = [4, 5, 16]. Keys and values are split into only 2 heads (more on this in lesson 6).`,
+   ein:"t (n d) -> n t d",tensors:[real("q_lin","flat, [t, (n d)]"),real("q_heads","split into heads, [n, t, d]")],check:realCheck,sel0:{k:"q_heads",idx:{n:2,t:3,d:5}}}
+ ]},
+/* ---------------------------------- 5 ---------------------------------- */
+{title:"RMSNorm and softmax",
+ intro:`<p>Two small functions appear everywhere in a transformer. <b>RMSNorm</b> rescales a vector so that its numbers have a typical size of about 1. <b>Softmax</b> turns a list of any numbers into a list of positive weights that add up to 1.</p>
+  <p>Both work along one axis only. They do not mix different tokens.</p>`,
+ parts:(()=>{
+  const xs=[3,4],ms=sum(xs.map(x=>x*x))/2,r=Math.sqrt(ms+CFG.eps);
+  const z=[1,2,3],sz=sm(z);
+  return[
+  {title:"RMSNorm",text:`RMS means "root mean square". For one token: square each number, take the mean, take the square root. Then divide every number by that and multiply by a learned scale <b>w</b>. In this tiny model all scales w are exactly 1.0, so the multiply does nothing visible. In a trained model they differ. The embeddings here are tiny (about 0.02), and after the norm they are about 1: that is the point of the layer.`,
+   formula:`y[t,h] = x[t,h] / √( mean over h of x² + 1e-6 ) × w[h]`,
+   tiny:{title:"Tiny example: one token with 2 numbers [3, 4]",lines:[`squares: 9, 16      mean: ${ms}`,`rms = √(${ms}) = ${f3(r)}`,`y = [3 ÷ ${f3(r)}, 4 ÷ ${f3(r)}] = [${f3(3/r)}, ${f3(4/r)}]`]},
+   tensors:[real("x0","input: embedding"),real("g_norm1","scale w (all 1.0)"),real("norm1","result: RMSNorm(x0)")],check:realCheck,sel0:{k:"norm1",idx:{t:3,h:4}}},
+  {title:"Softmax",text:`Softmax makes each number positive with <span class="mono">exp</span>, then divides by the sum. Big numbers get big weights. A number of minus infinity gets weight 0. Below, the real attention scores of 4 heads are turned into weights. Click a cell of <b>weights</b>. The mask is explained in the next lesson. For now: it adds −∞ to the cells that a token may not look at.`,
+   formula:`weights[n,t,s] = exp(z[s]) / Σ over s' of exp(z[s'])      with z = score + mask`,
+   tiny:{title:"Tiny example: scores [1, 2, 3]",lines:[`exp: ${z.map(x=>Math.exp(x).toFixed(3)).join(", ")}      sum = ${sum(z.map(Math.exp)).toFixed(3)}`,`weights = [${sz.map(f3).join(", ")}]   they add up to ${sum(sz).toFixed(1)}`]},
+   tensors:[real("scores","input: scores"),real("mask","mask: 0 or −∞"),real("weights","result: softmax over s")],check:realCheck,sel0:{k:"weights",idx:{n:0,t:3,s:1}}}
+ ]})()},
+/* ---------------------------------- 6 ---------------------------------- */
+{title:"Attention, step by step",
+ intro:`<p>Attention lets each token collect information from earlier tokens. Each token makes a <b>query</b> q ("what am I looking for?"), a <b>key</b> (a label) and a <b>value</b> (the content). Then:</p>
+  <p>1. Compare the query of token <span class="dim dim-t">t</span> with the key of token <span class="dim dim-s">s</span>. This gives a <b>score</b>. 2. Hide the future with a <b>mask</b>, and use softmax to turn the scores into weights. 3. Add up the values, weighted by those weights.</p>`,
+ parts:[
+  {title:"1. Prepare q and k",text:`Before the comparison, q (and k) are normalized by an RMSNorm over <span class="dim dim-d">d</span> and then rotated by <b>RoPE</b>. RoPE rotates the pair of numbers (d, d+8) of each head by an angle that grows with the token position t. This way a score depends on how far apart two tokens are. Here you can check the rotation of one number.`,
+   formula:`q_rope[n,t,d] = q[n,t,d] × cos[t,d]  ±  q[n,t,d±8] × sin[t,d]       (minus for d < 8, plus for d ≥ 8)`,
+   tensors:[real("q_norm","q after q_norm"),real("cos","cos table"),real("sin","sin table"),real("q_rope","result: q after RoPE")],check:realCheck,sel0:{k:"q_rope",idx:{n:1,t:3,d:2}}},
+  {title:"2. Scores and shared heads",text:`The score of query token t and key token s is the dot product of their vectors over <span class="dim dim-d">d</span>, times 1/√16 = 0.25. This is the same matrix multiply as lesson 3, once for each head. <b>GQA</b> (grouped-query attention): this model has 4 query heads but only 2 key/value heads. Each key head is shared by 2 query heads: heads 0 and 1 use key head 0, heads 2 and 3 use key head 1. This saves memory, because keys and values are what we store for every past token. Gemma 4 E2B goes further with 8 query heads and a single key head.`,
+   ein:"n t d, k s d -> n t s",extra:"gqa",goneNote:"Only d is summed. The letter k is not summed: it just picks the shared key head for each n (k = n \u00f7 2, rounded down).",
+   tensors:[real("q_rope","queries, 4 heads"),real("k_rope","keys, only 2 heads"),real("scores","result: scores")],check:realCheck,sel0:{k:"scores",idx:{n:2,t:3,s:1}}},
+  {title:"3. Causal mask and softmax",text:`A language model must not look at the future. The <b>mask</b> is 0 where token s is not later than token t, and −∞ where it is. We add it to the scores. After softmax, the −∞ cells become exactly 0 and every row adds up to 1. In the spreadsheet of <b>mask</b>, −∞ is shown for the blocked cells (stored as −1e9).`,
+   ein:"n t s, t s -> n t s   then softmax over s",
+   tensors:[real("scores","scores"),real("mask","causal mask"),real("weights","result: attention weights")],check:realCheck,sel0:{k:"weights",idx:{n:2,t:3,s:1}}},
+  {title:"4. Weighted sum of values",text:`The output for token t is the sum of the value vectors of all tokens s, each multiplied by its weight. The letter <span class="dim dim-s">s</span> disappears, so it is summed. The result has the same shape as q: one vector of 16 numbers for each head and token. Here again, each value head is read by 2 query heads.`,
+   ein:"n t s, k s d -> n t d",goneNote:"Only s is summed. The letter k just picks the shared value head for each n (k = n \u00f7 2, rounded down).",tensors:[real("weights","weights"),real("v_heads","values, 2 heads"),real("ctx","result: mixed values")],check:realCheck,sel0:{k:"ctx",idx:{n:2,t:3,d:5}}}
+ ]},
+/* ---------------------------------- 7 ---------------------------------- */
+{title:"The gated MLP",
+ intro:`<p>After attention, every token goes through a small network <b>on its own</b>. No token looks at another one here. Attention mixes <i>across</i> tokens, the MLP works <i>inside</i> each token.</p>
+  <p>Qwen3 uses a <b>gated</b> MLP: two matrix multiplies from 8 numbers up to 32 (<b>gate</b> and <b>up</b>), a smooth switch called <b>SiLU</b> on the gate, a multiply, and a matrix multiply back down to 8 numbers.</p>`,
+ parts:(()=>{
+  const sl=x=>x/(1+Math.exp(-x));
+  return[
+  {title:"Gate and up",text:`Both are matrix multiplies of the same input <b>norm2</b> with different weights. The letter <span class="dim dim-h">h</span> (8 numbers) disappears and the letter <span class="dim dim-i">i</span> (32 numbers) appears. Click a cell of <b>gate</b> or <b>up</b>.`,
+   ein:"t h, i h -> t i",tensors:[real("norm2","input"),real("Wgate","gate weights [i h]"),real("gate","result: gate"),real("Wup","up weights [i h]"),real("up","result: up")],check:realCheck,sel0:{k:"gate",idx:{t:3,i:7}}},
+  {title:"SiLU and multiply",text:`<b>SiLU(x) = x / (1 + e<sup>−x</sup>)</b> is a smooth switch. For a big positive x it returns about x. For a big negative x it returns about 0. We apply it to the gate, then multiply with up, cell by cell. The gate decides how much of "up" passes through.`,
+   formula:`act_up[t,i] = SiLU( gate[t,i] ) × up[t,i]`,
+   tiny:{title:"Tiny example: SiLU of 2, 0 and −2",lines:[`SiLU(2) = ${f3(sl(2))}      SiLU(0) = ${f3(sl(0))}      SiLU(−2) = ${f3(sl(-2))}`]},
+   tensors:[real("gate","gate"),real("act","SiLU(gate)"),real("up","up"),real("act_up","result: SiLU(gate) × up")],check:realCheck,sel0:{k:"act_up",idx:{t:3,i:7}}},
+  {title:"Down and residual",text:`The last matrix multiply goes back from 32 to 8 numbers: <span class="dim dim-i">i</span> disappears. Then we add the result to the input of the MLP (<b>res1</b>). This is the <b>residual connection</b>: a layer only adds a change, so the old information is never lost.`,
+   ein:"t i, h i -> t h",tensors:[real("act_up","input"),real("Wdown","down weights [h i]"),real("down","result: down"),real("res1","res1 (input of the MLP block)"),real("res2","result: res2 = res1 + down")],check:realCheck,sel0:{k:"res2",idx:{t:3,h:4}}}
+ ]})()},
+/* ---------------------------------- 8 ---------------------------------- */
+{title:"Put it together: the whole layer-0 graph",graph:true,
+ intro:`<p>Now we connect every part we met. Each box below is a <b>real tensor</b> of the tiny Qwen3 model, for the text <b>${esc(DATA.meta.text)}</b>. Each arrow means "this tensor was computed from that one". The left column is the <b>residual stream</b>: the main road that every layer adds to.</p>
+  <p>Click a box. You see its real numbers in the 3D view and in the spreadsheet, its einsum, and a button that recomputes one cell from the parent tensors.</p>`},
+/* ---------------------------------- 9 ---------------------------------- */
+{title:"Bridge to our model: Gemma 4 E2B",bridge:true,
+ intro:`<p>OpenJev uses Gemma 4 E2B. It has the same graph, with the same einsums, but bigger sizes and a few extras. Below, the shapes of the layer-0 graph for the tiny model and for Gemma. Then the mask lab from the first version of this page.</p>`}
+];
+
+/* ===================================================================== */
+/*  PART 4. Graph of the layer                                           */
+/* ===================================================================== */
+const LANE={TR:88,Q:235,K:380,V:525,QK:307,KV:452},NW=124,NH=40,RH=58,TOP=30;
+const GN=[
+ {id:"ids",c:"TR",r:0,kind:"in",t:"Token ids",ein:"text -> t",plain:"The tokenizer cuts the text into 5 tokens and gives each an id number. It is the only input of the model.",par:[]},
+ {id:"x0",c:"TR",r:1,kind:"in",t:"Embedding",ein:"t, v h -> t h",plain:"Each id picks one row of the embedding table E (151,936 rows of 8 numbers). Only the 5 rows that we used are exported. A lookup is the same as a matrix multiply with a one-hot vector.",par:[{id:"ids"}],w:["E_rows"]},
+ {sel:{t:3,h:4},id:"norm1",c:"TR",r:2,kind:"norm",t:"RMSNorm",ein:"t h, h -> t h",plain:"Rescales each token so its 8 numbers have a size of about 1, then multiplies by the learned scale w (all 1.0 here). See lesson 5.",par:[{id:"x0"}],w:["g_norm1"]},
+ {sel:{t:2,nd:37},id:"q_lin",c:"Q",r:3,kind:"lin",t:"q projection",ein:"t h, (n d) h -> t (n d)",plain:"Matrix multiply: each token gets 64 numbers, that is 4 query heads of 16. See lesson 3.",par:[{id:"norm1"}],w:["Wq"]},
+ {id:"k_lin",c:"K",r:3,kind:"lin",t:"k projection",ein:"t h, (k d) h -> s (k d)",plain:"Each token gets 32 numbers: 2 key heads of 16. The token axis of keys is called s (the token that is looked at); it is the same tokens as t.",par:[{id:"norm1"}],w:["Wk"]},
+ {id:"v_lin",c:"V",r:3,kind:"lin",t:"v projection",ein:"t h, (k d) h -> s (k d)",plain:"Each token gets 32 numbers: 2 value heads of 16.",par:[{id:"norm1"}],w:["Wv"]},
+ {sel:{n:2,t:3,d:5},id:"q_heads",c:"Q",r:4,kind:"re",t:"q heads",ein:"t (n d) -> n t d",plain:"Reshape and transpose only. No arithmetic. See lesson 4.",par:[{id:"q_lin"}]},
+ {id:"k_heads",c:"K",r:4,kind:"re",t:"k heads",ein:"s (k d) -> k s d",plain:"Reshape and transpose only.",par:[{id:"k_lin"}]},
+ {id:"v_heads",c:"V",r:4,kind:"re",t:"v heads",ein:"s (k d) -> k s d",plain:"Reshape and transpose only.",par:[{id:"v_lin"}]},
+ {id:"q_norm",c:"Q",r:5,kind:"norm",t:"q_norm",ein:"n t d, d -> n t d",plain:"Qwen3 normalizes every query head with an RMSNorm over d.",par:[{id:"q_heads"}],w:["g_qnorm"]},
+ {id:"k_norm",c:"K",r:5,kind:"norm",t:"k_norm",ein:"k s d, d -> k s d",plain:"The same for the keys.",par:[{id:"k_heads"}],w:["g_knorm"]},
+ {sel:{n:1,t:3,d:2},id:"q_rope",c:"Q",r:6,kind:"re",t:"q RoPE",ein:"n t d, t d, t d -> n t d",plain:"Rotates the numbers (d, d+8) of each query by an angle that depends on the token position. See lesson 6.",par:[{id:"q_norm"}],w:["cos","sin"]},
+ {sel:{k:1,t:3,d:2},id:"k_rope",c:"K",r:6,kind:"re",t:"k RoPE",ein:"k s d, s d, s d -> k s d",plain:"The same rotation for the keys.",par:[{id:"k_norm"}],w:["cos","sin"]},
+ {sel:{n:2,t:3,s:1},id:"scores",c:"QK",r:7,kind:"attn",t:"scores",ein:"n t d, k s d -> n t s",plain:"Dot product of every query with every key, times 0.25. Query head n reads key head k = n ÷ 2 (rounded down): this is GQA.",par:[{id:"q_rope"},{id:"k_rope"}]},
+ {id:"mask",c:"KV",r:7,kind:"attn",t:"causal mask",ein:"t s",plain:"A fixed grid. 0 where token s is not later than token t, minus infinity (stored as −1e9) elsewhere. It has no parents.",par:[]},
+ {sel:{n:2,t:3,s:1},id:"weights",c:"QK",r:8,kind:"attn",t:"softmax weights",ein:"n t s, t s -> n t s  (softmax over s)",plain:"Adds the mask to the scores and applies softmax over s. Every row adds up to 1 and the blocked cells are 0.",par:[{id:"scores"},{id:"mask"}]},
+ {sel:{n:2,t:3,d:5},id:"ctx",c:"QK",r:9,kind:"attn",t:"weighted values",ein:"n t s, k s d -> n t d",plain:"Each token collects the values of the tokens it looks at, weighted by the weights. The letter s is summed.",par:[{id:"weights"},{id:"v_heads",mode:"vR"}]},
+ {id:"ctx_flat",c:"QK",r:10,kind:"re",t:"merge heads",ein:"n t d -> t (n d)",plain:"Puts the 4 heads side by side again: 4 × 16 = 64 numbers per token. No arithmetic.",par:[{id:"ctx"}]},
+ {id:"attn_out",c:"QK",r:11,kind:"lin",t:"o projection",ein:"t (n d), h (n d) -> t h",plain:"Matrix multiply from 64 numbers back to 8. The letters n and d are both summed.",par:[{id:"ctx_flat"}],w:["Wo"],toR:true},
+ {id:"res1",c:"TR",r:12,kind:"res",t:"residual 1",ein:"t h, t h -> t h",plain:"Adds the attention result to the original input x0. The residual connection.",par:[{id:"x0",mode:"skipL"},{id:"attn_out",mode:"toR"}]},
+ {id:"norm2",c:"TR",r:13,kind:"norm",t:"RMSNorm",ein:"t h, h -> t h",plain:"The same kind of norm, before the MLP.",par:[{id:"res1"}],w:["g_norm2"]},
+ {sel:{t:3,i:7},id:"gate",c:"Q",r:14,kind:"mlp",t:"gate",ein:"t h, i h -> t i",plain:"Matrix multiply from 8 to 32 numbers. See lesson 7.",par:[{id:"norm2"}],w:["Wgate"]},
+ {id:"up",c:"K",r:14,kind:"mlp",t:"up",ein:"t h, i h -> t i",plain:"A second matrix multiply from 8 to 32 numbers.",par:[{id:"norm2"}],w:["Wup"]},
+ {id:"act",c:"Q",r:15,kind:"mlp",t:"SiLU(gate)",ein:"t i -> t i",plain:"A smooth switch applied cell by cell: x ÷ (1 + e^−x).",par:[{id:"gate"}]},
+ {sel:{t:3,i:7},id:"act_up",c:"QK",r:16,kind:"mlp",t:"act × up",ein:"t i, t i -> t i",plain:"Cell-by-cell multiply. The gate decides how much of up passes.",par:[{id:"act"},{id:"up"}]},
+ {id:"down",c:"QK",r:17,kind:"mlp",t:"down projection",ein:"t i, h i -> t h",plain:"Matrix multiply from 32 numbers back to 8. The letter i is summed.",par:[{id:"act_up"}],w:["Wdown"]},
+ {sel:{t:3,h:4},id:"res2",c:"TR",r:18,kind:"res",t:"residual 2",ein:"t h, t h -> t h",plain:"Adds the MLP result to res1. This is the output of layer 0.",par:[{id:"res1",mode:"skipL"},{id:"down",mode:"toR"}]},
+ {id:"layer1_out",c:"TR",r:19,kind:"ghost",t:"layer 1 (...)",ein:"layer 1 repeats the graph above",plain:"Layer 1 is the same graph again with its own weights. This is a test model with only 2 layers. We do not draw it a second time, and we did not export its weights, so this box has no cell check. Real models repeat it 28 to 36 times (Gemma 4 E2B: 35).",par:[{id:"res2"}]},
+ {id:"final_norm",c:"TR",r:20,kind:"norm",t:"final RMSNorm",ein:"t h, h -> t h",plain:"The last norm. Its parent is the output of layer 1, not of layer 0.",par:[{id:"layer1_out"}],w:["g_final"]},
+ {sel:{v:0},id:"logits_top5",c:"TR",r:21,kind:"out",t:"top-5 logits",ein:"h, v h -> v",plain:"Only the last token predicts the next word. Its 8 numbers are multiplied with the rows of lm_head (151,936 rows). We keep the 5 largest results. The checkpoint is a test model with random weights, so these tokens are meaningless. The point is the shape of the computation.",par:[{id:"final_norm"}],w:["W_lm_top5"]}
+];
+const GBY=Object.fromEntries(GN.map(n=>[n.id,n]));
+const gx=n=>LANE[n.c],gy=n=>TOP+n.r*RH;
+function edgePath(from,to,mode){
+  const fx_=gx(from),fy_=gy(from),tx=gx(to),ty=gy(to),x1=fx_,y1=fy_+NH/2,x2=tx,y2=ty-NH/2;
+  if(mode==="skipL")return`M ${fx_-NW/2} ${fy_} H 10 V ${ty} H ${tx-NW/2-3}`;
+  if(mode==="toR")return`M ${x1} ${y1} V ${ty} H ${tx+NW/2+3}`;
+  if(mode==="vR")return`M ${x1} ${y1} V ${ty} H ${tx+NW/2+3}`;
+  const ym=(y1+y2)/2;return`M ${x1} ${y1} C ${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2-2}`;
+}
+function graphSVG(){
+  const H=TOP+22*RH-10;
+  let s=`<svg class="graph" viewBox="0 0 600 ${H}" role="group" aria-label="Graph of the layer-0 tensors"><defs>
+   <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--muted)"/></marker>
+   <marker id="arrh" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--warn)"/></marker>
+   <marker id="arro" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--accent)"/></marker></defs>`;
+  for(const n of GN)for(const p of n.par)s+=`<path class="edge" data-from="${p.id}" data-to="${n.id}" d="${edgePath(GBY[p.id],n,p.mode)}"/>`;
+  for(const n of GN){
+    const T=R[n.id],shape=T.axes.map(a=>a==="nd"?"nd":a==="kd"?"kd":a).join(" ")+"  "+T.shape.join("×");
+    s+=`<g class="gnode k-${n.kind}" data-id="${n.id}" tabindex="0" role="button" aria-label="${n.t}, shape ${T.shape.join(" by ")}">
+      <rect x="${gx(n)-NW/2}" y="${gy(n)-NH/2}" width="${NW}" height="${NH}" rx="8"/>
+      <text class="t1" x="${gx(n)}" y="${gy(n)-3}" text-anchor="middle">${esc(n.t)}</text>
+      <text class="t2" x="${gx(n)}" y="${gy(n)+12}" text-anchor="middle">${esc(shape)}</text></g>`;
+  }
+  return s+`</svg>`;
+}
+
+/* ===================================================================== */
+/*  PART 5. Bridge to Gemma: sizes table and mask lab                    */
+/* ===================================================================== */
+const GEM={h:1536,n:8,k:1,d:256,i:6144,v:262144};
+function gemShape(T,tn){
+  const m={...GEM,t:tn,s:tn,nd:GEM.n*GEM.d,kd:GEM.k*GEM.d,b:1};
+  return T.axes.map(a=>m[a]);
+}
+const fmtN=n=>n.toLocaleString("en-US");
+const LABTOK=[["<ctx>",0],["refund",0],["please",0],["</ctx>",0],["<q>",0],["<instr>",0],["Which",0],["team?",0],
+ ["<opt>",1],["billing",1],["<flag>",1,"f"],["<opt>",2],["bug",2],["<flag>",2,"f"],["</q>",0]];
+let MODE="prism",selR=10,selC=12;
+function labPositions(){
+  const pos=[];let p=0,base=null,longest=0,cur=-1,start=0;
+  LABTOK.forEach((tk,i)=>{const seg=tk[1];
+    if(seg===0){if(base!==null){p=base+longest;base=null;longest=0}pos.push(p);p++;return}
+    if(base===null)base=p;if(seg!==cur){cur=seg;start=i}
+    pos.push(base+(i-start));longest=Math.max(longest,i-start+1)});
+  return pos;
+}
+function labAllowed(r,c){
+  const sr=LABTOK[r][1],sc=LABTOK[c][1],fr=LABTOK[r][2]==="f";
+  if(MODE==="causal")return c<=r;
+  if(r===c)return true;if(sr===0)return sc===0;if(sc===0)return true;if(sr===sc)return true;
+  if(MODE==="prism"&&fr)return true;return false;
+}
+function labReason(r,c){
+  const a=esc(LABTOK[r][0]),b=esc(LABTOK[c][0]),ok=labAllowed(r,c),sr=LABTOK[r][1],sc=LABTOK[c][1],fr=LABTOK[r][2]==="f";
+  const who=`<b class="mono">${a}</b> (row ${r}) → <b class="mono">${b}</b> (column ${c}): `;
+  if(MODE==="causal")return who+(ok?"allowed, because a causal model sees only earlier tokens.":"blocked, because this token comes later. A causal model never looks ahead.");
+  if(r===c)return who+"allowed. Every token sees itself.";
+  if(sr===0&&sc===0)return who+"allowed. The shared block (state and question) is read in both directions, even toward later tokens.";
+  if(sr===0)return who+"blocked. The shared block never sees an option, so the question is read the same way whatever the options are.";
+  if(sc===0)return who+"allowed. Every option token sees the whole shared block.";
+  if(sr===sc)return who+"allowed. Tokens of the same option see each other in both directions.";
+  if(fr&&MODE==="prism")return who+"allowed. In OpenJev now, a flag also sees the other options of its question, so it can compare them. Prism-1 reports that this can cost 3–5 points; the A/B test will decide.";
+  return who+(fr?"blocked. In the isolated design, a flag sees only the shared block and its own option. Options are compared only by the softmax.":"blocked. An option never sees another option.");
+}
+function renderMask(root){
+  const pos=labPositions(),N=LABTOK.length,tok=i=>esc(LABTOK[i][0]);
+  let h=`<tr><th></th><th></th>${LABTOK.map((t,c)=>`<th class="col${c===selC?" hlc":""}">${tok(c)}</th>`).join("")}</tr>`;
+  h+=`<tr><th></th><th class="muted">pos</th>${pos.map(p=>`<th class="pos">${p}</th>`).join("")}</tr>`;
+  for(let r=0;r<N;r++){
+    h+=`<tr><th class="${r===selR?"hl":""}" style="text-align:right">${tok(r)}</th><th class="pos">${pos[r]}</th>`;
+    for(let c=0;c<N;c++){const on=labAllowed(r,c);
+      h+=`<td><button type="button" class="mcell ${on?(r===c?"self":"on"):""}" data-r="${r}" data-c="${c}" aria-label="${tok(r)} to ${tok(c)}: ${on?"allowed":"blocked"}" ${r===selR&&c===selC?'aria-pressed="true"':""}></button></td>`}
+    h+="</tr>";
+  }
+  root.querySelector("#mask").innerHTML=h;
+  root.querySelector("#mexp").innerHTML=labReason(selR,selC);
+}
+
+/* ===================================================================== */
+/*  PART 6. Page: navigation, lesson rendering                           */
+/* ===================================================================== */
+const SHORT={b:"batch",t:"token (asks)",s:"token (looked at)",h:"hidden size",n:"query head",k:"key/value head",d:"head size",i:"MLP width",v:"vocabulary",o:"output (toy)"};
+function legendHTML(){
+  return`<div class="legend" aria-label="Axis letters"><span class="ttl">Axis letters</span>`+
+   LET.split("").map(c=>`<span class="lg" title="${AXM[c]}"><b class="dim dim-${c}">${c}</b> ${SHORT[c]}</span>`).join("")+`</div>`;
+}
+function einBox(part){
+  if(part.ein){
+    const core=part.ein.split(/\s{2,}/)[0],[l,r]=core.split("->"),ls=(l.match(/[a-z]/g)||[]),rs=(r?r.match(/[a-z]/g):[])||[];
+    const gone=[...new Set(ls.filter(x=>!rs.includes(x)))],sizes={};
+    part.tensors.forEach(e=>e.T.axes.forEach((a,i)=>{
+      if(e.T.split&&e.T.split[a]){sizes[e.T.split[a][0]]=sizes[e.T.split[a][0]]||"?";sizes.d=e.T.split[a][1]}
+      else sizes[a]=e.T.shape[i]}));
+    if(part.ein.includes("(n d)")&&part.tensors.some(e=>e.T.key==="X"&&e.T.split)){sizes.n=2;sizes.d=3}
+    if(part.ein.includes("(n d)")&&part.tensors.some(e=>e.T.real)){sizes.n=NQ;sizes.d=HD}
+    if(part.ein.includes("(k d)")){sizes.k=NK;sizes.d=HD}
+    const sz=Object.keys(sizes).filter(c=>part.ein.includes(c)&&LET.includes(c)&&sizes[c]!=="?").map(c=>`<span>${colorize(c)} = ${sizes[c]}</span>`).join("");
+    return`<div class="einbox"><div class="einsum" aria-label="einsum">${colorize(part.ein)}</div>
+     <div class="einnote">${sz?`<span>Axis sizes here:</span>${sz}`:""}<span>${part.goneNote?part.goneNote:r!==undefined?(gone.length?`Disappears (summed): ${gone.map(colorize).join(", ")}`:"No letter disappears: nothing is summed."):""}</span></div></div>`;
+  }
+  if(part.formula)return`<div class="einbox"><div class="einsum formula">${colorize(esc(part.formula))}</div></div>`;
+  return"";
+}
+function tinyBox(t){return t?`<div class="tiny"><span class="tinyttl">${t.title}</span>${t.lines.map(l=>`<span>${esc(l)}</span>`).join("")}</div>`:""}
+function gqaHTML(){
+  return`<div class="einbox"><h4>Who shares which key head (GQA)</h4><div class="gqa" id="gqa">${Array.from({length:NQ},(_,n)=>`<div data-n="${n}">query head ${n}<br>→ key head ${Math.floor(n/GRP)}</div>`).join("")}</div></div>`;
+}
+
+let LI=0;const PI={},DONE=new Set();
+const $=(s,e)=>(e||document).querySelector(s);
+function renderNav(){
+  $("#nav").innerHTML=`<ol>${LESSONS.map((L,i)=>`<li><button type="button" data-i="${i}" class="${DONE.has(i)?"done":""}" aria-current="${i===LI}"><span class="num">${i+1}</span><span>${L.title}</span></button></li>`).join("")}</ol>`;
+  $("#progTxt").textContent=`Lesson ${LI+1} of ${LESSONS.length}: ${LESSONS[LI].title}`;
+  $("#progBar").style.width=((LI+1)/LESSONS.length*100)+"%";
+}
+function go(i){
+  LI=Math.max(0,Math.min(LESSONS.length-1,i));DONE.add(LI);
+  try{history.replaceState(null,"","#l"+(LI+1))}catch(_){}
+  $("#nav").classList.remove("open");$("#navBtn").setAttribute("aria-expanded","false");
+  renderNav();renderLesson();window.scrollTo({top:0});
+}
+function lessonNav(){return`<div class="nav2"><button class="btn" type="button" data-go="prev" ${LI===0?"disabled":""}>Previous</button><button class="btn primary" type="button" data-go="next" ${LI===LESSONS.length-1?"disabled":""}>Next lesson</button></div>`}
+function renderLesson(){
+  ACTIVE.forEach(a=>a.destroy&&a.destroy());ACTIVE.length=0;
+  const L=LESSONS[LI],main=$("#main");
+  let h=`${legendHTML()}<div class="lhead"><div class="eyebrow">Lesson ${LI+1} of ${LESSONS.length}</div><h2>${L.title}</h2></div><div class="card intro">${L.intro}</div>`;
+  if(L.parts&&L.parts.length>1){PI[LI]=PI[LI]||0;h+=`<div class="tabs" role="group" aria-label="Parts of this lesson">${L.parts.map((p,i)=>`<button type="button" data-p="${i}" aria-pressed="${i===PI[LI]}">${i+1}. ${p.title.replace(/^\d\.\s*/,"")}</button>`).join("")}</div>`}
+  h+=`<div id="body"></div>${lessonNav()}`;
+  main.innerHTML=h;
+  if(L.graph)renderGraph($("#body"));else if(L.bridge)renderBridge($("#body"));else renderPart($("#body"),L.parts[PI[LI]||0]);
+}
+function renderPart(host,part){
+  host.innerHTML=`<div class="card"><h3>${part.title.replace(/^\d\.\s*/,"")}</h3><p>${part.text}</p>${part.note?`<p class="note">${part.note}</p>`:""}${tinyBox(part.tiny)}${einBox(part)}${part.extra==="gqa"?gqaHTML():""}
+    <div id="vw"></div>
+    <div class="check"><h3>Check it</h3><div id="chk"></div><div class="row"><button class="btn small" type="button" id="rnd">Pick a random result cell</button></div></div></div>`;
+  const outs=part.tensors.filter(e=>part.check&&part.check(e.k,midIdx(e.T),e.T)).map(e=>e);
+  const chkEl=$("#chk",host);
+  const ctl=mountViewer($("#vw",host),part.tensors,{check:part.check,sel0:part.sel0||(outs.length?{k:outs[outs.length-1].k,idx:midIdx(outs[outs.length-1].T)}:null),
+    onSelect:st=>{chkEl.innerHTML=checkHTML(st);
+      const g=$("#gqa",host);if(g){const n=st.sel&&st.sel.idx&&st.sel.idx.n;g.querySelectorAll("div").forEach(d=>d.classList.toggle("on",n!==undefined&&+d.dataset.n===Math.floor(n)))}}});
+  if(!ctl.st.sel)chkEl.innerHTML=checkHTML(ctl.st);
+  $("#rnd",host).addEventListener("click",()=>{
+    const e=outs[outs.length-1]||part.tensors[part.tensors.length-1],T=e.T,idx={};
+    T.axes.forEach((a,i)=>{idx[a]=Math.floor(Math.random()*T.shape[i])});ctl.select(e.k,idx);
+  });
+}
+function renderGraph(host){
+  host.innerHTML=`<div class="ggrid"><div class="gcol"><div class="gscroll" id="gs">${graphSVG()}</div>
+    <div class="gkey"><span><i style="background:var(--k-in)"></i>input</span><span><i style="background:var(--k-norm)"></i>RMSNorm</span><span><i style="background:var(--k-lin)"></i>matrix multiply</span><span><i style="background:var(--k-re)"></i>reshape / RoPE</span><span><i style="background:var(--k-attn)"></i>attention</span><span><i style="background:var(--k-mlp)"></i>MLP</span><span><i style="background:var(--k-res)"></i>residual add</span><span><i style="background:var(--k-out)"></i>output</span></div>
+    <p class="muted" style="font-size:13px">Orange outline = the parents of the selected box. The long arrows on the left are the residual connections. Weights are not drawn as boxes: they are listed in the panel.</p></div>
+    <div class="gdetail" id="gd"></div></div>`;
+  const gs=$("#gs",host);
+  const sel=(id,user)=>{
+    const n=GBY[id];
+    gs.querySelectorAll(".gnode").forEach(g=>{g.classList.toggle("sel",g.dataset.id===id);g.classList.toggle("par",n.par.some(p=>p.id===g.dataset.id))});
+    gs.querySelectorAll("path.edge").forEach(p=>{p.classList.toggle("hi",p.dataset.to===id)});
+    showNode(id);
+    if(user&&window.matchMedia&&matchMedia("(max-width:900px)").matches)$("#gd",host).scrollIntoView({block:"start",behavior:"smooth"});
+  };
+  gs.addEventListener("click",e=>{const g=e.target.closest(".gnode");if(g)sel(g.dataset.id,true)});
+  gs.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){const g=e.target.closest(".gnode");if(g){e.preventDefault();sel(g.dataset.id,true)}}});
+  function showNode(id,weightKey){
+    ACTIVE.forEach(a=>a.destroy&&a.destroy());ACTIVE.length=0;
+    const n=GBY[id],gd=$("#gd",host),k=weightKey||id,T=R[k];
+    const chips=[...n.par.map(p=>`<button type="button" data-node="${p.id}">${p.id}</button>`),...(n.w||[]).map(w=>`<button type="button" class="w" data-w="${w}">${w}</button>`)].join("");
+    gd.innerHTML=`<div class="card"><div class="eyebrow">${weightKey?"weight of "+esc(n.t):"Tensor"}</div><h3>${esc(n.t)} <span class="mono muted" style="font-size:13px;font-weight:400">${weightKey?weightKey:id}</span></h3>
+      <div class="einsum">${colorize(weightKey?"learned numbers, layout "+T.axes.map(a=>a==="nd"?"(n d)":a).join(" "):n.ein)}</div>
+      <p>${weightKey?esc(T.desc):n.plain}</p>
+      ${n.par.length||(n.w||[]).length?`<div class="pchips"><span class="muted">Computed from:</span>${chips||"<span class='muted'>nothing (fixed grid)</span>"}</div>`:""}
+      ${weightKey?`<div class="pchips"><button type="button" data-node="${id}">Back to ${id}</button></div>`:""}
+      <div id="gv"></div>
+      <div class="check"><h3>Check one cell</h3><div class="row"><button class="btn primary small" type="button" id="gchk" ${hasChk(k)&&!weightKey?"":"disabled"}>Check one cell</button><button class="btn small" type="button" id="grnd" ${hasChk(k)&&!weightKey?"":"disabled"}>Pick a random cell</button></div><div id="gr"><p class="muted">${hasChk(k)&&!weightKey?"Select a cell, then press the button. The cell is recomputed from the parent tensors and compared with the stored value.":(weightKey?"A weight is a learned number. It is an input of the computation, so there is nothing to recompute.":(id==="ids"?"The ids come from the tokenizer. Nothing to recompute.":"No cell check for this box."))}</p></div></div></div>`;
+    gd.querySelectorAll("[data-node]").forEach(b=>b.addEventListener("click",()=>sel(b.dataset.node,true)));
+    gd.querySelectorAll("[data-w]").forEach(b=>b.addEventListener("click",()=>showNode(id,b.dataset.w)));
+    const gr=$("#gr",gd);
+    const ctl=mountViewer($("#gv",gd),[{k,T,label:weightKey?"weight":"",desc:T.desc}],{check:hasChk(k)&&!weightKey?(kk,i)=>CHK[kk](i):null,
+      sel0:{k,idx:(!weightKey&&n.sel)||midIdx(T)},onSelect:()=>{gr.innerHTML=`<p class="muted">Press "Check one cell" to recompute the selected cell.</p>`}});
+    const run=()=>{const st=ctl.st;if(!st.res)return;gr.innerHTML=checkHTML(st)};
+    const b=$("#gchk",gd);if(b){b.addEventListener("click",run);}
+    const r=$("#grnd",gd);if(r)r.addEventListener("click",()=>{const idx={};T.axes.forEach((a,i)=>{idx[a]=Math.floor(Math.random()*T.shape[i])});ctl.select(k,idx);run()});
+  }
+  sel("weights");
+}
+function renderBridge(host){
+  let tn=1088;
+  host.innerHTML=`<div class="card"><h3>Same graph, bigger sizes</h3>
+    <div class="facts">
+      <div class="fact"><b>Hidden size h</b>8 here, 1536 in Gemma</div>
+      <div class="fact"><b>Heads</b>4 query and 2 key/value here. Gemma: 8 query heads and 1 key/value head, so all 8 share it</div>
+      <div class="fact"><b>Head size d</b>16 here. Gemma: 256, or 512 in the global layers</div>
+      <div class="fact"><b>MLP width i</b>32 here. Gemma: 6144 (12,288 in the 20 layers that reuse keys and values)</div>
+      <div class="fact"><b>Layers</b>2 here. Gemma: 35</div>
+      <div class="fact"><b>Vocabulary v</b>151,936 here. Gemma: 262,144</div>
+    </div>
+    <div class="row"><label for="tN">Tokens in the text <span class="dim dim-t">t</span> for Gemma: </label><input id="tN" type="range" min="64" max="8192" step="64" value="1088" style="accent-color:var(--accent);width:180px"><output id="tO" class="mono">1088</output></div>
+    <div class="tblwrap"><table class="cmp" id="cmp"></table></div>
+    <h4>What Gemma 4 E2B adds on top of this graph</h4>
+    <ul style="margin:0;padding-left:20px;max-width:75ch">
+      <li><b>Multi-query attention.</b> One key/value head for 8 query heads: the K and V tensors are 8 times smaller than with 8 heads. In the last 20 layers Gemma reuses the K and V of an earlier layer.</li>
+      <li><b>GeGLU instead of SiLU.</b> The gate uses GELU (tanh form). The shape of the MLP is the same.</li>
+      <li><b>A different RMSNorm.</b> Gemma multiplies by (1 + w), where Qwen multiplies by w. The embedding is also multiplied by √1536 ≈ 39.2.</li>
+      <li><b>Sliding and global layers.</b> Sliding layers only look back 512 positions. Global layers look at everything and use head size 512.</li>
+      <li><b>Per-Layer Embedding (PLE).</b> Each token also gets a small 256-number vector for each of the 35 layers, which a layer adds to the residual stream. The table has 262,144 × 35 × 256 numbers, so OpenJev keeps it on the CPU.</li>
+      <li><b>OpenJev reads flags, not words.</b> There is no 262,144-word output layer. Instead a small head reads the hidden state at the flag tokens.</li>
+    </ul></div>
+    <div class="card"><div class="eyebrow">Prism mask lab</div><h3>Who may look at whom</h3>
+     <p class="muted">A small request with one question and two options. Row = the token that looks (query, <span class="dim dim-t">t</span>). Column = the token it looks at (key, <span class="dim dim-s">s</span>). A filled square means "allowed". This grid is the <span class="mono">mask</span> that you met in lesson 6: 0 where allowed, −∞ where not. Click a square for the reason.</p>
+     <div class="seg" role="group" aria-label="Mask mode"><button id="mPr" type="button" aria-pressed="true">Prism (OpenJev now)</button><button id="mIso" type="button" aria-pressed="false">Isolated flags (Prism-1 style)</button><button id="mCa" type="button" aria-pressed="false">Normal causal LLM</button></div>
+     <div class="labgrid"><div class="maskbox"><table class="mask" id="mask"></table></div>
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+       <div class="mchips"><span class="mchip" style="border-color:var(--d-v)">shared block</span><span class="mchip" style="border-color:var(--d-h)">option text</span><span class="mchip" style="border-color:var(--d-b)">flag (read by the head)</span></div>
+       <div class="explain" id="mexp">Click a square.</div>
+       <p class="note">Position ids (row under the tokens) are what RoPE uses. Both options start at the same position, so neither option is "first". Thus, the order of the options does not change the scores. The test <span class="mono">test_option_order_invariance</span> checks this. A normal causal LLM gives each option a different position, and option B can read option A.</p>
+      </div></div></div>`;
+  const cmp=$("#cmp",host);
+  const rows=GN.filter(n=>n.id!=="layer1_out"&&n.id!=="ids");
+  function paint(){
+    cmp.innerHTML=`<thead><tr><th>Tensor</th><th>Axes</th><th>Tiny Qwen3 (this course)</th><th>Gemma 4 E2B, t = ${fmtN(tn)}</th></tr></thead><tbody>`+
+     rows.map(n=>{const T=R[n.id];
+       let gs=gemShape(T,tn).map(fmtN).join(" × "),ts=T.shape.join(" × ");
+       if(n.id==="logits_top5"){gs=fmtN(GEM.v)+" (all words)";ts="5 shown of "+fmtN(CFG.vocab)}
+       return`<tr><td>${n.t}</td><td class="m">${colorize(T.axes.map(a=>a==="nd"?"(n d)":a==="kd"?"(k d)":a).join(" "))}</td><td class="m">${ts}</td><td class="m">${gs}</td></tr>`}).join("")+
+     `<tr><td colspan="4" class="muted">Look at <b>scores</b>: ${GEM.n} × ${fmtN(tn)} × ${fmtN(tn)} = ${fmtN(GEM.n*tn*tn)} numbers in each layer. It grows with t², which is why real kernels never store it whole.</td></tr></tbody>`;
+  }
+  paint();
+  $("#tN",host).addEventListener("input",e=>{tn=+e.target.value;$("#tO",host).value=tn;paint()});
+  renderMask(host);
+  const seg=(id)=>["mPr","mIso","mCa"].forEach(x=>$("#"+x,host).setAttribute("aria-pressed",String(x===id)));
+  $("#mPr",host).onclick=()=>{MODE="prism";seg("mPr");renderMask(host)};
+  $("#mIso",host).onclick=()=>{MODE="iso";seg("mIso");renderMask(host)};
+  $("#mCa",host).onclick=()=>{MODE="causal";seg("mCa");renderMask(host)};
+  $("#mask",host).addEventListener("click",e=>{const b=e.target.closest(".mcell");if(!b)return;selR=+b.dataset.r;selC=+b.dataset.c;renderMask(host)});
+}
+
+/* ---------- boot ---------- */
+function themeInit(){
+  const btn=$("#themeBtn"),order=["auto","light","dark"];let cur=0;
+  const apply=()=>{const t=order[cur];if(t==="auto")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",t);
+    btn.textContent="Theme: "+t;requestAnimationFrame(()=>ACTIVE.forEach(a=>a.redraw()))};
+  btn.addEventListener("click",()=>{cur=(cur+1)%3;apply()});
+  if(window.matchMedia)matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>requestAnimationFrame(()=>ACTIVE.forEach(a=>a.redraw())));
+}
+function boot(){
+  $("#nav").addEventListener("click",e=>{const b=e.target.closest("button[data-i]");if(b)go(+b.dataset.i)});
+  $("#navBtn").addEventListener("click",()=>{const o=$("#nav").classList.toggle("open");$("#navBtn").setAttribute("aria-expanded",String(o))});
+  $("#main").addEventListener("click",e=>{
+    const g=e.target.closest("[data-go]");if(g){go(LI+(g.dataset.go==="next"?1:-1));return}
+    const p=e.target.closest("[data-p]");if(p){PI[LI]=+p.dataset.p;
+      $("#main").querySelectorAll("[data-p]").forEach(x=>x.setAttribute("aria-pressed",String(x===p)));renderPart($("#body"),LESSONS[LI].parts[PI[LI]])}
+  });
+  themeInit();
+  const m=/^#l(\d+)$/.exec(location.hash||"");
+  const q=/[?&]p=(\d+)/.exec(location.search||"");
+  const start=m?Math.max(0,Math.min(LESSONS.length-1,+m[1]-1)):0;
+  if(q)PI[start]=+q[1];
+  LI=start;DONE.add(LI);renderNav();renderLesson();
+  window.addEventListener("hashchange",()=>{const mm=/^#l(\d+)$/.exec(location.hash||"");if(mm&&+mm[1]-1!==LI)go(+mm[1]-1)});
+}
+if(typeof document!=="undefined"&&document.getElementById("app"))boot();
+if(typeof globalThis!=="undefined")globalThis.__course={CHK,R,DATA,GN,TOYS,toyChecks,LESSONS,V,hasChk};
+</script>

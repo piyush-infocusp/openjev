@@ -1,0 +1,1094 @@
+<title>Tensor Course</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Tensor Course: nine short lessons, from one number to a whole transformer layer, using real tensors. */
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --head:#eef1f5; --ink:#151a22; --muted:#5b6575; --line:#d9dee6; --line2:#e6eaf0;
+  --accent:#0f6b63; --accent-soft:#e2f2ef; --warn:#a15c00; --ok:#1b7a3a; --bad:#b3261e;
+  --pos:58 120 190; --neg:214 100 40; --nosee:#e3e7ee;
+  --d-b:#7a4bd1; --d-t:#0f6b63; --d-s:#2a7f2a; --d-h:#c0392b; --d-n:#b05c00; --d-k:#8a6d00;
+  --d-d:#1f5fbf; --d-i:#a12c7b; --d-v:#555f70; --d-o:#00798c;
+  --k-in:#e8eef9; --k-norm:#eef5e6; --k-lin:#fdf0e0; --k-re:#f1e9fa; --k-attn:#fbe8ee; --k-mlp:#e3f4f2; --k-res:#eceff3; --k-out:#fff3c9;
+  --see:#0f6b63; --self:#7fbfb7;
+  --f-body:"Instrument Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f1318; --panel:#161b22; --head:#1d242d; --ink:#e6e9ee; --muted:#9aa4b2; --line:#2a313b; --line2:#222932;
+  --accent:#4fd1c0; --accent-soft:#12302d; --warn:#f0b35a; --ok:#6fd48f; --bad:#ff8a80;
+  --pos:90 160 255; --neg:255 150 90; --nosee:#1d242d;
+  --d-b:#b597ff; --d-t:#4fd1c0; --d-s:#7fd17f; --d-h:#ff8a7a; --d-n:#ffb55c; --d-k:#e8cf55;
+  --d-d:#7fb2ff; --d-i:#f08ad0; --d-v:#a6b0c0; --d-o:#5fd6e8;
+  --k-in:#1b2740; --k-norm:#1d2c1e; --k-lin:#38281a; --k-re:#2b2040; --k-attn:#3a1f2a; --k-mlp:#143432; --k-res:#232a33; --k-out:#3b3416;
+  --see:#4fd1c0; --self:#2f7f76; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f1318; --panel:#161b22; --head:#1d242d; --ink:#e6e9ee; --muted:#9aa4b2; --line:#2a313b; --line2:#222932;
+  --accent:#4fd1c0; --accent-soft:#12302d; --warn:#f0b35a; --ok:#6fd48f; --bad:#ff8a80;
+  --pos:90 160 255; --neg:255 150 90; --nosee:#1d242d;
+  --d-b:#b597ff; --d-t:#4fd1c0; --d-s:#7fd17f; --d-h:#ff8a7a; --d-n:#ffb55c; --d-k:#e8cf55;
+  --d-d:#7fb2ff; --d-i:#f08ad0; --d-v:#a6b0c0; --d-o:#5fd6e8;
+  --k-in:#1b2740; --k-norm:#1d2c1e; --k-lin:#38281a; --k-re:#2b2040; --k-attn:#3a1f2a; --k-mlp:#143432; --k-res:#232a33; --k-out:#3b3416;
+  --see:#4fd1c0; --self:#2f7f76; color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6;margin:0;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-bottom:48px;overflow-x:hidden}
+.app{max-width:1240px;margin:0 auto}
+h1,h2,h3,h4{margin:0;text-wrap:balance;line-height:1.2}
+h2{font-size:26px;letter-spacing:-.01em}
+h3{font-size:18px}
+h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+p{margin:0;max-width:70ch}
+.mono,code{font-family:var(--f-mono)}
+code{font-size:.9em;background:var(--head);padding:1px 5px;border-radius:5px}
+.muted{color:var(--muted)}
+.eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* axis colors */
+.dim{font-weight:600;font-family:var(--f-mono)}
+.dim-b{color:var(--d-b)}.dim-t{color:var(--d-t)}.dim-s{color:var(--d-s)}.dim-h{color:var(--d-h)}.dim-n{color:var(--d-n)}.dim-k{color:var(--d-k)}
+.dim-d{color:var(--d-d)}.dim-i{color:var(--d-i)}.dim-v{color:var(--d-v)}.dim-o{color:var(--d-o)}
+/* top bar */
+.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 0;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.brand{font-weight:700;font-size:17px;letter-spacing:-.01em}
+.prog{flex:1 1 180px;display:flex;flex-direction:column;gap:4px;min-width:140px}
+.prog span{font-size:13px;color:var(--muted)}
+.bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .25s}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 12px;font-size:14px;cursor:pointer}
+.btn:hover:not(:disabled){border-color:var(--accent)}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+.btn.small{padding:4px 9px;font-size:13px}
+#navBtn{display:none}
+.shell{display:grid;grid-template-columns:210px minmax(0,1fr);gap:24px;align-items:start;padding-top:22px}
+nav.nav{position:sticky;top:76px}
+nav.nav ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+nav.nav button{width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:8px;cursor:pointer;display:grid;grid-template-columns:22px 1fr;gap:8px;font-size:14px;line-height:1.35}
+nav.nav button .num{font-family:var(--f-mono);color:var(--muted);font-size:13px}
+nav.nav button:hover{background:var(--head)}
+nav.nav button[aria-current="true"]{background:var(--accent-soft);color:var(--ink);font-weight:600}
+nav.nav button.done .num::after{content:"\2713";color:var(--accent);margin-left:1px}
+main.main{display:flex;flex-direction:column;gap:20px;min-width:0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:13px;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px}
+.legend .lg{display:inline-flex;gap:5px;align-items:baseline;white-space:nowrap}
+.legend .ttl{color:var(--muted);font-weight:600;text-transform:uppercase;font-size:11px;letter-spacing:.08em}
+.lhead{display:flex;flex-direction:column;gap:8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.intro p+p{margin-top:8px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tabs button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:5px 13px;font-size:14px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel);font-weight:600}
+.einbox{display:flex;flex-direction:column;gap:8px}
+.einsum{font-family:var(--f-mono);font-size:17px;padding:12px 14px;border-radius:8px;background:var(--bg);border:1px solid var(--line);overflow-x:auto;white-space:nowrap}
+.einsum.formula{font-size:14px}
+.einnote{font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 16px}
+.tiny{font-family:var(--f-mono);font-size:13px;padding:12px 14px;border-radius:8px;background:var(--accent-soft);border:1px solid var(--line);display:flex;flex-direction:column;gap:3px;overflow-x:auto;white-space:pre}
+.tinyttl{font-family:var(--f-body);font-weight:600;font-size:13px;white-space:normal;color:var(--accent)}
+.vgrid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+.vcard{border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0;background:var(--panel)}
+.v3{position:sticky;top:76px}
+.sheetcard{display:flex;flex-direction:column;gap:6px}
+.sheetcard+.sheetcard{border-top:1px dashed var(--line);padding-top:12px}
+.shhead{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;font-size:14px}
+.shhead b{font-family:var(--f-mono)}
+.shhead .shape{font-family:var(--f-mono);font-size:12.5px;color:var(--muted)}
+.shdesc{font-size:13px;color:var(--muted)}
+.shctl{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted)}
+.shctl label{display:inline-flex;gap:5px;align-items:center}
+.shctl select{font:inherit;font-family:var(--f-mono);font-size:12.5px;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:1px 3px}
+.sheetwrap{overflow:auto;max-height:290px;border:1px solid var(--line);border-radius:8px;background:var(--panel);max-width:100%}
+table.sh{border-collapse:separate;border-spacing:0;font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+table.sh th{background:var(--head);color:var(--muted);font-weight:400;padding:2px 6px;white-space:nowrap;text-align:center;line-height:1.25;position:sticky;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+table.sh thead th{top:0;z-index:2}
+table.sh tbody th{left:0;z-index:1;text-align:left;min-width:54px}
+table.sh thead th.corner{left:0;z-index:3;text-align:left;font-size:11.5px}
+table.sh th small{display:block;font-size:10.5px;opacity:.85;font-weight:400;font-family:var(--f-body)}
+table.sh th.hl{color:var(--ink);background:var(--accent-soft)}
+td.gc{min-width:56px;height:28px;text-align:right;padding:2px 7px;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);cursor:pointer;color:var(--ink)}
+td.gc.ninf{color:var(--muted)}
+td.gc.mk{box-shadow:inset 0 0 0 2px var(--warn)}
+td.gc.sel{box-shadow:inset 0 0 0 2px var(--accent);font-weight:700}
+td.gc.sel.mk{box-shadow:inset 0 0 0 2px var(--accent),inset 0 0 0 4px var(--warn)}
+.cellinfo{font-size:13px;font-family:var(--f-mono);color:var(--muted);overflow-wrap:anywhere;min-height:1.5em}
+.cellinfo b{color:var(--ink)}
+.scalebar{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted)}
+.scalebar i{flex:0 0 110px;height:9px;border-radius:5px;border:1px solid var(--line);background:linear-gradient(90deg,rgb(var(--neg)),var(--panel),rgb(var(--pos)))}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:3px 11px;font-size:13px;font-family:var(--f-mono);cursor:pointer}
+.chips button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.cvwrap{border:1px solid var(--line);border-radius:8px;background:var(--bg);overflow:hidden}
+canvas.cv{display:block;width:100%;height:300px;cursor:grab;touch-action:pan-y}
+canvas.cv:active{cursor:grabbing}
+.tools{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font-size:13px;color:var(--muted)}
+.tools input[type=range]{accent-color:var(--accent);width:110px}
+.cap{font-size:13px}
+.check{border:1px solid var(--accent);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--panel)}
+.check h3{color:var(--accent)}
+.calc{display:flex;flex-direction:column;gap:5px;font-size:14px;overflow-wrap:anywhere}
+.calc .what{font-weight:600}
+.calc .line{font-family:var(--f-mono);font-size:13px}
+.calc details{display:inline}
+.calc summary{cursor:pointer;color:var(--accent);font-family:var(--f-body);font-size:12.5px}
+.calc .tm{display:inline-block}
+.result{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;padding:10px 12px;border-radius:8px;font-family:var(--f-mono);font-size:14px;background:var(--bg);border:1px solid var(--line)}
+.result.ok{border-color:var(--ok)}.result.bad{border-color:var(--bad)}
+.result .verdict{font-family:var(--f-body);font-weight:700}
+.result.ok .verdict{color:var(--ok)}.result.bad .verdict{color:var(--bad)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.note{font-size:14px;color:var(--muted);border-left:3px solid var(--line);padding-left:10px}
+.nav2{display:flex;justify-content:space-between;gap:10px;padding-top:6px}
+/* graph */
+.ggrid{display:grid;grid-template-columns:minmax(0,572px) minmax(0,1fr);gap:16px;align-items:start}
+.gcol{display:flex;flex-direction:column;gap:8px;min-width:0}
+.gscroll{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:auto;max-width:100%}
+svg.graph{display:block;width:100%;min-width:540px;height:auto}
+.gnode{cursor:pointer}
+.gnode rect{stroke:var(--line);stroke-width:1.2}
+.gnode text{fill:var(--ink);font-family:var(--f-mono);font-size:11px;pointer-events:none}
+.gnode text.t1{font-size:12px;font-weight:600}
+.gnode text.t2{fill:var(--muted);font-size:10px}
+.gnode.k-in rect{fill:var(--k-in)}.gnode.k-norm rect{fill:var(--k-norm)}.gnode.k-lin rect{fill:var(--k-lin)}.gnode.k-re rect{fill:var(--k-re)}
+.gnode.k-attn rect{fill:var(--k-attn)}.gnode.k-mlp rect{fill:var(--k-mlp)}.gnode.k-res rect{fill:var(--k-res)}.gnode.k-out rect{fill:var(--k-out)}
+.gnode.k-ghost rect{fill:var(--panel);stroke-dasharray:4 3}
+.gnode:hover rect{stroke:var(--accent)}
+.gnode.sel rect{stroke:var(--accent);stroke-width:3}
+.gnode.par rect{stroke:var(--warn);stroke-width:2.2}
+.gnode:focus-visible rect{stroke:var(--accent);stroke-width:3}
+path.edge{fill:none;stroke:var(--muted);stroke-width:1.3;opacity:.55;marker-end:url(#arr)}
+path.edge.hi{stroke:var(--warn);stroke-width:2.4;opacity:1;marker-end:url(#arrh)}
+path.edge.out{stroke:var(--accent);opacity:.9;marker-end:url(#arro)}
+.gkey{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--muted)}
+.gkey i{display:inline-block;width:11px;height:11px;border-radius:3px;border:1px solid var(--line);margin-right:5px;vertical-align:-1px}
+.gdetail{position:sticky;top:76px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.gdetail .vgrid{grid-template-columns:minmax(0,1fr)}
+.gdetail .v3{position:static}
+.pchips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:13px}
+.pchips button{border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:2px 10px;font-family:var(--f-mono);font-size:12.5px;cursor:pointer}
+.pchips button:hover{border-color:var(--accent)}
+.pchips button.w{border-style:dashed}
+/* tables for the bridge */
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;max-width:100%}
+table.cmp{border-collapse:collapse;font-size:13.5px;width:100%;min-width:620px}
+table.cmp th,table.cmp td{padding:6px 10px;border-bottom:1px solid var(--line2);text-align:left;white-space:nowrap}
+table.cmp th{background:var(--head);color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+table.cmp td.m{font-family:var(--f-mono);font-size:12.5px}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.fact{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--bg);font-size:14px}
+.fact b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px}
+/* mask lab (from the first version) */
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{font-size:13px;padding:6px 10px;border:0;background:transparent;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--panel)}
+.labgrid{display:grid;grid-template-columns:minmax(0,auto) minmax(0,1fr);gap:20px;align-items:start}
+.maskbox{overflow-x:auto;max-width:100%}
+table.mask{border-collapse:separate;border-spacing:2px;font-family:var(--f-mono);font-size:11px}
+table.mask th{font-weight:400;color:var(--muted);padding:0 3px;white-space:nowrap}
+table.mask th.col{writing-mode:vertical-rl;transform:rotate(180deg);height:74px;text-align:left}
+table.mask th.hl,table.mask th.hlc{color:var(--accent);font-weight:600}
+.mcell{width:22px;height:22px;border-radius:4px;background:var(--nosee);border:0;padding:0;cursor:pointer;display:block}
+.mcell.on{background:var(--see)}
+.mcell.self{background:var(--self)}
+.mcell[aria-pressed="true"]{outline:2px solid var(--warn);outline-offset:1px}
+.pos{color:var(--d-t)}
+.explain{font-size:14.5px;min-height:3em}
+.mchips{display:flex;flex-wrap:wrap;gap:6px}
+.mchip{font-family:var(--f-mono);font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+.gqa{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;max-width:460px}
+.gqa div{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:var(--f-mono);font-size:13px;text-align:center;background:var(--bg)}
+.gqa div.on{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+@media (max-width:900px){
+  .shell{grid-template-columns:minmax(0,1fr);gap:14px;padding-top:14px}
+  #navBtn{display:inline-block}
+  nav.nav{display:none;position:static;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px}
+  nav.nav.open{display:block}
+  .vgrid,.ggrid,.labgrid{grid-template-columns:minmax(0,1fr)}
+  .v3,.gdetail{position:static}
+  .gscroll{max-height:68vh}
+  h2{font-size:22px}
+  .card{padding:14px}
+}
+@media (max-width:480px){
+  body{font-size:15.5px}
+  .einsum{font-size:15px}
+}
+@media (prefers-reduced-motion:no-preference){.bar i{transition:width .25s}}
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <span class="brand">Tensor Course</span>
+    <div class="prog"><span id="progTxt"></span><div class="bar"><i id="progBar"></i></div></div>
+    <button class="btn" id="navBtn" type="button" aria-expanded="false" aria-controls="nav">Lessons</button>
+    <button class="btn" id="themeBtn" type="button" aria-label="Change color theme">Theme: auto</button>
+  </header>
+  <div class="shell">
+    <nav class="nav" id="nav" aria-label="Lessons"></nav>
+    <main class="main" id="main"></main>
+  </div>
+</div>
+
+<script id="data">const DATA=/*__DATA__*/null;</script>
+<script>
+"use strict";
+/* ===================================================================== */
+/*  PART 1. Data and math. No DOM here, so the same code runs in Node.   */
+/* ===================================================================== */
+const CFG=DATA.meta.config, NT=DATA.meta.ids.length, TOKS=DATA.meta.tokens;
+const HD=CFG.head_dim, NQ=CFG.heads, NK=CFG.kv_heads, GRP=NQ/NK, HID=CFG.hidden, MLP=CFG.mlp;
+const LET="btshnkdivo";
+const AXM={b:"batch (how many texts at once)",t:"token position (the token that asks)",s:"token position (the token being looked at)",
+ h:"hidden: the numbers that describe one token",n:"query head",k:"key/value head",d:"numbers inside one head",
+ i:"width of the MLP",v:"a word of the vocabulary",o:"output feature (toy examples)"};
+
+function finish(T){const st=[];let s=1;for(let i=T.shape.length-1;i>=0;i--){st[i]=s;s*=T.shape[i]}T.strides=st;T.size=s;return T}
+function load(key,o){
+  const axes=[],shape=[];
+  o.axes.forEach((a,i)=>{if(a==="b"&&o.shape[i]===1)return;axes.push(a);shape.push(o.shape[i])});
+  const T={key,axes,shape,data:o.data,kind:o.kind,desc:o.desc,split:o.split||null,labels:null,real:true};
+  if(axes.includes("t")||axes.includes("s")){T.labels={t:TOKS,s:TOKS}}
+  return finish(T);
+}
+const R={};for(const k of Object.keys(DATA.tensors))R[k]=load(k,DATA.tensors[k]);
+function tv(T,o){let p=0;for(let i=0;i<T.axes.length;i++){const a=T.axes[i],x=o[a];
+  if(!(x>=0&&x<T.shape[i]))throw new Error("bad index "+T.key+" "+a+"="+x);p+=x*T.strides[i]}return T.data[p]}
+const V=(k,o)=>tv(R[k],o);
+const sum=a=>a.reduce((x,y)=>x+y,0);
+const colorize=s=>String(s).replace(/\b([btshnkdivo])\b/g,'<span class="dim dim-$1">$1</span>');
+const esc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const fx=x=>Math.abs(x)>=1e8?"−∞":String(+x.toPrecision(3));
+const fy=x=>Math.abs(x)>=1e8?"−∞":String(+x.toPrecision(6));
+const axName=a=>a==="nd"?colorize("(n d)"):a==="kd"?colorize("(k d)"):colorize(a);
+const IDX=o=>Object.keys(o).map(a=>`${axName(a)}=${o[a]}`).join(", ");
+const nm=(k,o)=>`<code>${k}[${IDX(o)}]</code>`;
+function termsHTML(pairs){
+  const f=p=>`${fx(p[0])} × ${fx(p[1])}`;
+  const head=pairs.slice(0,4).map(f).join(" + ");
+  if(pairs.length<=4)return head;
+  return head+` + … <span class="muted">(${pairs.length} terms)</span> <details><summary>show all ${pairs.length} terms</summary>${pairs.map(f).join(" + ")}</details>`;
+}
+const listHTML=(a,n=6)=>"["+a.slice(0,n).map(fx).join(", ")+(a.length>n?", …":"")+"]";
+const RES=(title,computed,stored,lines,used)=>({title,computed,stored,lines,used:used||[]});
+
+/* ---- recompute functions: one per real tensor, keyed by tensor name ---- */
+const CHK={};
+function rmsChk(outK,inK,gK,ax){
+  return i=>{
+    const n=R[inK].shape[R[inK].axes.indexOf(ax)],base={...i},xs=[];
+    for(let j=0;j<n;j++){base[ax]=j;xs.push(V(inK,base))}
+    const ms=sum(xs.map(x=>x*x))/n,r=Math.sqrt(ms+CFG.eps),w=V(gK,{[ax]:i[ax]}),x=xs[i[ax]],c=x/r*w;
+    const rest={...i};delete rest[ax];
+    return RES(`${nm(outK,i)} = x ÷ rms × w`,c,V(outK,i),[
+      `x = the ${n} numbers of ${inK} along ${axName(ax)}: ${listHTML(xs,5)}`,
+      `mean of squares = ${fy(ms)}`,
+      `rms = √(${fy(ms)} + ${CFG.eps}) = ${fy(r)}`,
+      `${outK} = x[${ax}=${i[ax]}] ÷ rms × w = ${fy(x)} ÷ ${fy(r)} × ${fy(w)} = ${fy(c)}`
+    ],[{k:inK,where:rest},{k:gK,where:{[ax]:i[ax]}}]);
+  };
+}
+function linChk(outK,inK,wK,sel){ /* sel(i) -> {w: weight index without h/i, row: input index without contraction axis, ax: contraction axis, n} */
+  return i=>{
+    const s=sel(i),pairs=[];
+    for(let j=0;j<s.n;j++)pairs.push([V(inK,{...s.row,[s.ax]:j}),V(wK,{...s.w,[s.ax]:j})]);
+    const c=sum(pairs.map(p=>p[0]*p[1]));
+    return RES(`${nm(outK,i)} = Σ over ${axName(s.ax)} of ${inK} × ${wK}`,c,V(outK,i),[
+      ...(s.note?[s.note]:[]),
+      `inputs: ${inK}[${IDX(s.row)}, ${axName(s.ax)}=…] and weights ${wK}[${IDX(s.w)}, ${axName(s.ax)}=…]`,
+      termsHTML(pairs)+` = <b>${fy(c)}</b>`
+    ],[{k:inK,where:s.row},{k:wK,where:s.w}]);
+  };
+}
+CHK.x0=i=>{const id=DATA.meta.ids[i.t],c=V("E_rows",{t:i.t,h:i.h});
+  return RES(`${nm("x0",i)} = row ${id} of the embedding table E, column ${i.h}`,c,V("x0",i),
+    [`token t=${i.t} is "${esc(TOKS[i.t])}" and has id ${id}`,`E[${id}, h=${i.h}] = ${fy(c)}`],[{k:"E_rows",where:{t:i.t}}])};
+CHK.norm1=rmsChk("norm1","x0","g_norm1","h");
+CHK.q_lin=linChk("q_lin","norm1","Wq",i=>{const n=Math.floor(i.nd/HD),d=i.nd%HD;return{ax:"h",n:HID,row:{t:i.t},w:{n,d},note:`column nd=${i.nd} means head n=${n}, position d=${d}`}});
+CHK.k_lin=linChk("k_lin","norm1","Wk",i=>{const k=Math.floor(i.kd/HD),d=i.kd%HD;return{ax:"h",n:HID,row:{t:i.s},w:{k,d},note:`key token s=${i.s} reads row t=${i.s} of norm1. Column kd=${i.kd} means key head k=${k}, position d=${d}`}});
+CHK.v_lin=linChk("v_lin","norm1","Wv",i=>{const k=Math.floor(i.kd/HD),d=i.kd%HD;return{ax:"h",n:HID,row:{t:i.s},w:{k,d},note:`value token s=${i.s} reads row t=${i.s} of norm1. Column kd=${i.kd} means value head k=${k}, position d=${d}`}});
+const reshapeChk=(outK,inK,ax,lead,p)=>i=>{const j={[p]:i[p],[ax]:i[lead]*HD+i.d},c=V(inK,j);
+  return RES(`${nm(outK,i)} = ${inK}[${p}=${i[p]}, ${ax}=${i[lead]}×${HD}+${i.d}]`,c,V(outK,i),
+   [`No arithmetic. Head ${axName(lead)}=${i[lead]} owns columns ${i[lead]*HD} to ${i[lead]*HD+HD-1} of the flat vector.`,`${inK}[${p}=${i[p]}, ${ax}=${j[ax]}] = ${fy(c)}`],[{k:inK,where:j}])};
+CHK.q_heads=reshapeChk("q_heads","q_lin","nd","n","t");
+CHK.k_heads=reshapeChk("k_heads","k_lin","kd","k","s");
+CHK.v_heads=reshapeChk("v_heads","v_lin","kd","k","s");
+CHK.q_norm=rmsChk("q_norm","q_heads","g_qnorm","d");
+CHK.k_norm=rmsChk("k_norm","k_heads","g_knorm","d");
+const ropeChk=(outK,inK,lead,p)=>i=>{
+  const half=HD/2,d2=(i.d+half)%HD,sg=i.d<half?-1:1,x=V(inK,i),xr=V(inK,{...i,d:d2}),
+   co=V("cos",{t:i[p],d:i.d}),si=V("sin",{t:i[p],d:i.d}),c=x*co+sg*xr*si;
+  return RES(`${nm(outK,i)} = x·cos + (± partner)·sin`,c,V(outK,i),[
+    `d=${i.d} is paired with d=${d2} (half a head, ${half}, away). Sign is ${sg<0?"minus":"plus"}.`,
+    `x = ${fy(x)}, partner = ${fy(xr)}, cos[t=${i[p]},d=${i.d}] = ${fy(co)}, sin = ${fy(si)}`,
+    `${fy(x)} × ${fy(co)} ${sg<0?"−":"+"} ${fy(xr)} × ${fy(si)} = ${fy(c)}`
+  ],[{k:inK,where:{...i}},{k:inK,where:{...i,d:d2}},{k:"cos",where:{t:i[p],d:i.d}},{k:"sin",where:{t:i[p],d:i.d}}]);
+};
+CHK.q_rope=ropeChk("q_rope","q_norm","n","t");
+CHK.k_rope=ropeChk("k_rope","k_norm","k","s");
+CHK.scores=i=>{const kk=Math.floor(i.n/GRP),p=[];
+  for(let d=0;d<HD;d++)p.push([V("q_rope",{n:i.n,t:i.t,d}),V("k_rope",{k:kk,s:i.s,d})]);
+  const raw=sum(p.map(a=>a[0]*a[1])),c=raw*CFG.scale;
+  return RES(`${nm("scores",i)} = (q · key) × 1/√${HD}`,c,V("scores",i),[
+    `query head n=${i.n} reads key head k = ⌊n ÷ ${GRP}⌋ = ${kk} (heads are shared in groups of ${GRP})`,
+    `q = q_rope[n=${i.n}, t=${i.t}, :]   key = k_rope[k=${kk}, s=${i.s}, :]   (${HD} numbers each)`,
+    termsHTML(p),`sum = ${fy(raw)}, times ${CFG.scale} (that is 1/√${HD}) = <b>${fy(c)}</b>`
+  ],[{k:"q_rope",where:{n:i.n,t:i.t}},{k:"k_rope",where:{k:kk,s:i.s}}]);};
+CHK.mask=i=>{const c=i.s<=i.t?0:-1e9;
+  return RES(`${nm("mask",i)} = 0 if s ≤ t, else −∞`,c,V("mask",i),
+   [`token t=${i.t} ("${esc(TOKS[i.t])}") may look at token s=${i.s} ("${esc(TOKS[i.s])}") only if s is not later than t: ${i.s<=i.t?"yes, so 0":"no, so −∞ (stored as −1e9)"}`]);};
+CHK.weights=i=>{const z=[],zs=[];
+  for(let s=0;s<NT;s++){const m=V("mask",{t:i.t,s});z.push(V("scores",{n:i.n,t:i.t,s})+m);zs.push(V("scores",{n:i.n,t:i.t,s}))}
+  const mx=Math.max(...z),e=z.map(x=>Math.exp(x-mx)),tot=sum(e),c=e[i.s]/tot;
+  return RES(`${nm("weights",i)} = softmax over s of (score + mask)`,c,V("weights",i),[
+    `row of scores: ${listHTML(zs,5)}   mask added: ${listHTML(Array.from({length:NT},(_,s)=>V("mask",{t:i.t,s})),5)}`,
+    `exp(score − max) for each s: ${listHTML(e,5)}   (a masked entry gives 0)`,
+    `weight = ${fy(e[i.s])} ÷ ${fy(tot)} = <b>${fy(c)}</b>`,
+    `the row of weights adds to ${fy(sum(Array.from({length:NT},(_,s)=>V("weights",{n:i.n,t:i.t,s}))))}`
+  ],[{k:"scores",where:{n:i.n,t:i.t}},{k:"mask",where:{t:i.t}}]);};
+CHK.ctx=i=>{const kk=Math.floor(i.n/GRP),p=[];
+  for(let s=0;s<NT;s++)p.push([V("weights",{n:i.n,t:i.t,s}),V("v_heads",{k:kk,s,d:i.d})]);
+  const c=sum(p.map(a=>a[0]*a[1]));
+  return RES(`${nm("ctx",i)} = Σ over s of weights × values`,c,V("ctx",i),[
+    `value head k = ⌊${i.n} ÷ ${GRP}⌋ = ${kk}`,termsHTML(p)+` = <b>${fy(c)}</b>`],
+    [{k:"weights",where:{n:i.n,t:i.t}},{k:"v_heads",where:{k:kk,d:i.d}}]);};
+CHK.ctx_flat=i=>{const n=Math.floor(i.nd/HD),d=i.nd%HD,c=V("ctx",{n,t:i.t,d});
+  return RES(`${nm("ctx_flat",i)} = ctx[n=${n}, t=${i.t}, d=${d}]`,c,V("ctx_flat",i),[`No arithmetic: the heads are placed side by side. Column ${i.nd} is head ${n}, position ${d}.`],[{k:"ctx",where:{n,t:i.t,d}}]);};
+CHK.attn_out=i=>{const p=[];
+  for(let n=0;n<NQ;n++)for(let d=0;d<HD;d++)p.push([V("ctx",{n,t:i.t,d}),V("Wo",{h:i.h,n,d})]);
+  const c=sum(p.map(a=>a[0]*a[1]));
+  return RES(`${nm("attn_out",i)} = Σ over n and d of ctx × Wo`,c,V("attn_out",i),[
+    `Two letters disappear (n and d), so we add ${NQ} × ${HD} = ${p.length} products.`,termsHTML(p)+` = <b>${fy(c)}</b>`],
+    [{k:"ctx",where:{t:i.t}},{k:"Wo",where:{h:i.h}}]);};
+const addChk=(o,a,b)=>i=>{const x=V(a,i),y=V(b,i),c=x+y;
+  return RES(`${nm(o,i)} = ${a} + ${b}`,c,V(o,i),[`The residual connection: add the input back. ${fy(x)} + ${fy(y)} = <b>${fy(c)}</b>`],[{k:a,where:{...i}},{k:b,where:{...i}}]);};
+CHK.res1=addChk("res1","x0","attn_out");
+CHK.norm2=rmsChk("norm2","res1","g_norm2","h");
+CHK.gate=linChk("gate","norm2","Wgate",i=>({ax:"h",n:HID,row:{t:i.t},w:{i:i.i}}));
+CHK.up=linChk("up","norm2","Wup",i=>({ax:"h",n:HID,row:{t:i.t},w:{i:i.i}}));
+CHK.act=i=>{const g=V("gate",i),c=g/(1+Math.exp(-g));
+  return RES(`${nm("act",i)} = SiLU(gate) = g ÷ (1 + e^−g)`,c,V("act",i),[`g = ${fy(g)}, so ${fy(g)} ÷ (1 + e^${fy(-g)}) = <b>${fy(c)}</b>`],[{k:"gate",where:{...i}}]);};
+CHK.act_up=i=>{const a=V("act",i),u=V("up",i),c=a*u;
+  return RES(`${nm("act_up",i)} = SiLU(gate) × up`,c,V("act_up",i),[`${fy(a)} × ${fy(u)} = <b>${fy(c)}</b>. The gate decides how much of "up" passes.`],[{k:"act",where:{...i}},{k:"up",where:{...i}}]);};
+CHK.down=linChk("down","act_up","Wdown",i=>({ax:"i",n:MLP,row:{t:i.t},w:{h:i.h}}));
+CHK.res2=addChk("res2","res1","down");
+CHK.final_norm=rmsChk("final_norm","layer1_out","g_final","h");
+CHK.logits_top5=i=>{const p=[],t=NT-1;
+  for(let h=0;h<HID;h++)p.push([V("final_norm",{t,h}),V("W_lm_top5",{v:i.v,h})]);
+  const c=sum(p.map(a=>a[0]*a[1]));
+  return RES(`${nm("logits_top5",i)} = final_norm[last token] · lm_head row`,c,V("logits_top5",i),[
+    `candidate token ${i.v+1} is "${esc(DATA.meta.top5.tokens[i.v])}" (id ${DATA.meta.top5.ids[i.v]}). Only the last token (t=${t}) predicts the next word.`,
+    termsHTML(p)+` = <b>${fy(c)}</b>`],[{k:"final_norm",where:{t}},{k:"W_lm_top5",where:{v:i.v}}]);};
+const hasChk=k=>typeof CHK[k]==="function";
+
+/* ---- tiny hand-made tensors for the first lessons ---- */
+function toy(key,axes,nested,o){
+  o=o||{};const shape=[];let a=nested;for(let i=0;i<axes.length;i++){shape.push(a.length);a=a[0]}
+  const data=[];(function f(x){Array.isArray(x)?x.forEach(f):data.push(x)})(nested);
+  return finish({key,axes,shape,data,kind:"toy",desc:o.desc||"",split:o.split||null,labels:null,nested:o.keepNested?nested:null,real:false});
+}
+const TOYS=(()=>{
+  const sc=toy("s",[],3.5,{keepNested:true});
+  const vec=toy("v",["h"],[2,-1,0.5,3],{keepNested:true});
+  const Mat=toy("M",["t","h"],[[1,2,3,4],[5,6,7,8],[9,10,11,12]],{keepNested:true});
+  const Blk=toy("B",["n","t","h"],[[[1,2,3,4],[5,6,7,8],[9,10,11,12]],[[-1,0,1,2],[3,4,5,6],[7,8,9,10]]],{keepNested:true});
+  const A=toy("A",["t","h"],[[1,2,3],[4,5,6]]),Bm=toy("B2",["t","h"],[[2,0,1],[1,-1,2]]);
+  const P=toy("P",["t","h"],A.nested?[]:[[2,0,3],[4,-5,12]]);
+  const Sh=toy("S",["t"],[5,11]),St=toy("S2",["h"],[6,-5,15]);
+  const dx=toy("x",["h"],[1,2,3]),dw=toy("w",["h"],[4,5,6]),dd=toy("dot",[],32);
+  const X=toy("X",["t","h"],[[1,2,3],[0,1,-1]]),W=toy("W",["h","o"],[[1,0],[2,1],[0,-1]]),Y=toy("Y",["t","o"],[[5,-1],[2,2]]);
+  const Xf=toy("X",["t","nd"],[[1,2,3,4,5,6],[7,8,9,10,11,12]],{split:{nd:["n",3]}});
+  const X3=finish({key:"X3",axes:["t","n","d"],shape:[2,2,3],data:Xf.data.slice(),kind:"toy",desc:"",split:null,labels:null,real:false});
+  const Xh=toy("Xh",["n","t","d"],[0,1].map(n=>[0,1].map(t=>[0,1,2].map(d=>Xf.data[t*6+n*3+d]))));
+  return{sc,vec,Mat,Blk,A,Bm,P,Sh,St,dx,dw,dd,X,W,Y,Xf,X3,Xh};
+})();
+
+/* ---- checks for toy parts ---- */
+function chkFlat(k,i,T){
+  const bits=T.axes.map((a,j)=>`${axName(a)}=${i[a]} × ${T.strides[j]}`),pos=T.axes.reduce((p,a,j)=>p+i[a]*T.strides[j],0);
+  let stored=T.nested;for(const a of T.axes)stored=stored[i[a]];
+  return RES(`Where does ${nm(k,i)} live in memory?`,T.data[pos],stored,[
+    `A tensor is stored as one flat list of ${T.size} numbers. The shape tells us where each cell sits.`,
+    `The step (stride) of an axis is the product of the lengths of the axes to its right.`,
+    `position = ${bits.join(" + ")||"0"} = ${pos}`,`flat list[${pos}] = ${fy(T.data[pos])}`]);
+}
+function tcheck(table){return (k,i,T)=>table[k]?table[k](i,T):null}
+
+/* ===================================================================== */
+/*  PART 2. Viewers: spreadsheet and 3D                                  */
+/* ===================================================================== */
+const SENT=1e8;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const rgb3=s=>{if(s[0]==="#"){const n=parseInt(s.slice(1),16);return[n>>16&255,n>>8&255,n&255]}return s.split(/[\s,]+/).map(Number)};
+function palette(){const g=n=>rgb3(css(n));return{pos:g("--pos"),neg:g("--neg"),panel:g("--panel"),line:g("--line"),accent:g("--accent"),warn:g("--warn"),ink:g("--ink"),muted:g("--muted"),nosee:g("--nosee"),bg:g("--bg"),ax:Object.fromEntries(LET.split("").map(c=>[c,css("--d-"+c)]))}}
+const mix=(a,b,t)=>a.map((x,i)=>Math.round(x+(b[i]-x)*t));
+const rgbs=a=>`rgb(${a[0]},${a[1]},${a[2]})`;
+const scaleOf=T=>{let m=0;for(const v of T.data){const a=Math.abs(v);if(a<SENT&&a>m)m=a}return m||1};
+function heat(v,sc,pal,amax){if(Math.abs(v)>=SENT)return pal.nosee;const t=Math.max(-1,Math.min(1,v/sc));return mix(pal.panel,t>=0?pal.pos:pal.neg,amax*Math.pow(Math.abs(t),.75))}
+function fmtCell(v){
+  if(Math.abs(v)>=SENT)return"−∞";
+  if(Number.isInteger(v)&&Math.abs(v)<1e6)return String(v);
+  const a=Math.abs(v);if(a>=100)return v.toFixed(1);if(a>=0.01||a===0)return v.toFixed(3);return v.toFixed(4);
+}
+function vsNew(T){
+  const A=T.axes,vs={row:null,col:null,fixed:{},sel:null,yaw:-0.62,pitch:0.5};
+  if(A.length>=1)vs.col=A[A.length-1];
+  if(A.length>=2)vs.row=A[A.length-2];
+  fixAll(T,vs);return vs;
+}
+function fixAll(T,vs){const f={};T.axes.forEach(a=>{if(a!==vs.row&&a!==vs.col)f[a]=vs.fixed[a]||0});vs.fixed=f}
+const cellIdx=(vs,r,c)=>{const o={...vs.fixed};if(vs.row!==null)o[vs.row]=r;if(vs.col!==null)o[vs.col]=c;return o};
+const dimOf=(T,a)=>T.shape[T.axes.indexOf(a)];
+function axHead(T,a,i){
+  const sp=T.split&&T.split[a];
+  if(sp)return`<span class="dim dim-${sp[0]}">${sp[0]}${Math.floor(i/sp[1])}</span> <span class="dim dim-d">d${i%sp[1]}</span>`;
+  const lab=T.labels&&T.labels[a]?`<small>${esc(T.labels[a][i].trim())}</small>`:"";
+  return`<span class="dim dim-${LET.includes(a)?a:"v"}">${a}</span>${i}${lab}`;
+}
+const ACTIVE=[];
+
+/* ---------------- 3D block on canvas, hand-made projection ---------------- */
+const CAP3=12;
+function draw3D(cv,T,vs,isMark){
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth,H=cv.clientHeight;
+  if(!W||!H)return;
+  if(cv.width!==Math.round(W*dpr)||cv.height!==Math.round(H*dpr)){cv.width=Math.round(W*dpr);cv.height=Math.round(H*dpr)}
+  const c=cv.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);c.clearRect(0,0,W,H);
+  const pal=palette(),sc=scaleOf(T),A=T.axes;
+  const ax={x:vs.col,y:vs.row,z:A.find(a=>a!==vs.row&&a!==vs.col)||null};
+  const sz=a=>a===null?1:dimOf(T,a);
+  const n={x:sz(ax.x),y:sz(ax.y),z:sz(ax.z)};
+  const m={x:Math.min(n.x,CAP3),y:Math.min(n.y,CAP3),z:Math.min(n.z,CAP3)};
+  const idxOf=(i,j,k)=>{const o={...vs.fixed};if(ax.x!==null)o[ax.x]=i;if(ax.y!==null)o[ax.y]=j;if(ax.z!==null)o[ax.z]=k;return o};
+  const cy=Math.cos(vs.yaw),sy=Math.sin(vs.yaw),cp=Math.cos(vs.pitch),sp=Math.sin(vs.pitch);
+  const rot=(x,y,z)=>{const x1=x*cy+z*sy,z1=-x*sy+z*cy,y2=y*cp-z1*sp,z2=y*sp+z1*cp;return[x1,y2,z2]};
+  const ext=Math.sqrt(m.x*m.x+m.y*m.y+m.z*m.z)+3.2,S=Math.min(W,H)/ext*1.15,ox=W/2,oy=H/2;
+  const prj=p=>[ox+p[0]*S,oy+p[1]*S];
+  const half=.43;
+  const dirs=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  const rn=dirs.map(d=>rot(d[0],d[1],d[2]));
+  const shade=[.8,.8,.62,1,.9,.9];
+  const cubes=[];
+  for(let i=0;i<m.x;i++)for(let j=0;j<m.y;j++)for(let k=0;k<m.z;k++){
+    const cx=i+.5-m.x/2,cyy=j+.5-m.y/2,cz=k+.5-m.z/2,r=rot(cx,cyy,cz);cubes.push({i,j,k,cx,cy:cyy,cz,z:r[2]});
+  }
+  cubes.sort((a,b)=>b.z-a.z);
+  const faces=[];cv._faces=faces;
+  const hasZ=ax.z!==null&&n.z>1,selZ=hasZ?vs.fixed[ax.z]:0;
+  const cornersOf=(cu,fi)=>{
+    const d=dirs[fi],ai=d[0]?0:d[1]?1:2,u=(ai+1)%3,w=(ai+2)%3,out=[];
+    for(const[su,sw]of[[1,1],[-1,1],[-1,-1],[1,-1]]){
+      const p=[cu.cx,cu.cy,cu.cz];p[ai]+=(d[0]+d[1]+d[2])*half;p[u]+=su*half;p[w]+=sw*half;out.push(prj(rot(p[0],p[1],p[2])));
+    }return out;
+  };
+  const poly=(pts)=>{c.beginPath();pts.forEach((p,q)=>q?c.lineTo(p[0],p[1]):c.moveTo(p[0],p[1]));c.closePath()};
+  const top=[];
+  for(const cu of cubes){
+    const idx=idxOf(cu.i,cu.j,cu.k),v=tv(T,idx),base=heat(v,sc,pal,.92);
+    const inSel=!hasZ||cu.k===selZ,alpha=inSel?1:.34;
+    const isSel=vs.sel&&A.every(a=>vs.sel[a]===idx[a]),mk=isMark(idx);
+    for(let fi=0;fi<6;fi++){
+      if(rn[fi][2]>=0)continue;
+      const pts=cornersOf(cu,fi);
+      c.globalAlpha=alpha;c.fillStyle=rgbs(mix(base,[0,0,0],(1-shade[fi])*.55));poly(pts);c.fill();
+      c.globalAlpha=alpha*.9;c.lineWidth=.7;c.strokeStyle=rgbs(mix(pal.line,pal.ink,.25));c.stroke();
+      faces.push({pts,idx});
+      if(isSel||mk)top.push({pts,isSel,mk});
+    }
+  }
+  c.globalAlpha=1;
+  if(hasZ&&selZ<m.z){ /* outline of the selected slice */
+    const k=selZ,p=[[-m.x/2,-m.y/2],[m.x/2,-m.y/2],[m.x/2,m.y/2],[-m.x/2,m.y/2]].map(q=>prj(rot(q[0],q[1],k-m.z/2)));
+    poly(p);c.lineWidth=2;c.strokeStyle=rgbs(pal.accent);c.setLineDash([5,4]);c.stroke();c.setLineDash([]);
+  }
+  for(const f of top){if(f.mk){poly(f.pts);c.lineWidth=2.4;c.strokeStyle=rgbs(pal.warn);c.stroke()}}
+  for(const f of top){if(f.isSel){poly(f.pts);c.lineWidth=3;c.strokeStyle=rgbs(pal.accent);c.stroke()}}
+  /* axis labels and "..." marks */
+  c.font='600 12px "JetBrains Mono",ui-monospace,monospace';c.textBaseline="middle";c.textAlign="center";
+  const label=(txt,col,p)=>{const w=c.measureText(txt).width+10;c.fillStyle=rgbs(mix(pal.bg,pal.panel,.5));c.globalAlpha=.9;c.fillRect(p[0]-w/2,p[1]-9,w,18);c.globalAlpha=1;c.fillStyle=col;c.fillText(txt,p[0],p[1])};
+  const nice=a=>a==="nd"?"n·d":a==="kd"?"k·d":a;
+  const colr=a=>pal.ax[a]||css("--muted");
+  if(ax.x!==null)label(`${nice(ax.x)} (${n.x})`,colr(ax.x),prj(rot(0,m.y/2+.95,-m.z/2)));
+  if(ax.y!==null)label(`${nice(ax.y)} (${n.y})`,colr(ax.y),prj(rot(-m.x/2-1.1,0,-m.z/2)));
+  if(ax.z!==null&&n.z>1)label(`${nice(ax.z)} (${n.z})`,colr(ax.z),prj(rot(m.x/2+1,m.y/2+.2,0)));
+  c.fillStyle=rgbs(pal.muted);c.font='700 16px "JetBrains Mono",monospace';
+  if(n.x>m.x)c.fillText("…",...prj(rot(m.x/2+.6,0,-m.z/2)));
+  if(n.y>m.y)c.fillText("…",...prj(rot(0,m.y/2+.4,-m.z/2)));
+  if(n.z>m.z)c.fillText("…",...prj(rot(0,0,m.z/2+.6)));
+  const lim=[];if(n.x>m.x)lim.push(`${m.x} of ${n.x} along ${ax.x}`);if(n.y>m.y)lim.push(`${m.y} of ${n.y} along ${ax.y}`);if(n.z>m.z)lim.push(`${m.z} of ${n.z} along ${ax.z}`);
+  return lim;
+}
+function bind3D(cv,vs,redraw,pick){
+  let drag=null;
+  cv.addEventListener("pointerdown",e=>{try{cv.setPointerCapture(e.pointerId)}catch(_){}drag={x:e.clientX,y:e.clientY,m:0,yaw:vs.yaw,pitch:vs.pitch}});
+  cv.addEventListener("pointermove",e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;drag.m=Math.max(drag.m,Math.hypot(dx,dy));
+    if(drag.m>4){vs.yaw=drag.yaw+dx*.01;vs.pitch=Math.max(-1.4,Math.min(1.4,drag.pitch+dy*.01));redraw()}});
+  cv.addEventListener("pointerup",e=>{if(drag&&drag.m<=4){const r=cv.getBoundingClientRect();pick(e.clientX-r.left,e.clientY-r.top)}drag=null});
+  cv.addEventListener("pointercancel",()=>{drag=null});
+  cv.addEventListener("keydown",e=>{const s={ArrowLeft:[-.15,0],ArrowRight:[.15,0],ArrowUp:[0,-.15],ArrowDown:[0,.15]}[e.key];
+    if(s){e.preventDefault();vs.yaw+=s[0];vs.pitch=Math.max(-1.4,Math.min(1.4,vs.pitch+s[1]));redraw()}});
+}
+function hit3D(cv,x,y){
+  const inPoly=(pts)=>{let ins=false;for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+    const a=pts[i],b=pts[j];if(((a[1]>y)!==(b[1]>y))&&(x<(b[0]-a[0])*(y-a[1])/(b[1]-a[1])+a[0]))ins=!ins}return ins};
+  const f=cv._faces||[];for(let i=f.length-1;i>=0;i--)if(inPoly(f[i].pts))return f[i].idx;return null;
+}
+
+/* ---------------- viewer: spreadsheet cards + one 3D card ---------------- */
+function mountViewer(host,list,o){
+  const st={list,cur:list[list.length-1].k,vs:{},sel:null,res:null};
+  list.forEach(e=>{st.vs[e.k]=vsNew(e.T)});
+  host.innerHTML=`<div class="vgrid">
+    <section class="vcard" aria-label="Spreadsheet view"><h4>Spreadsheet view</h4><div class="sheets"></div>
+      <div class="scalebar"><span>negative</span><i></i><span>positive</span><span>(color = value ÷ largest absolute value of that tensor)</span></div></section>
+    <section class="vcard v3" aria-label="3D view"><h4>3D view</h4><div class="chips"></div>
+      <div class="cvwrap"><canvas class="cv" tabindex="0" role="img" aria-label="3D block of cells. Drag to rotate, click a cell to select it."></canvas></div>
+      <div class="tools"><button class="btn small" type="button" data-act="reset">Reset view</button><label>Tilt <input type="range" min="-70" max="80" value="29" data-act="tilt" aria-label="Tilt"></label></div>
+      <p class="cap muted"></p></section></div>`;
+  const sheets=host.querySelector(".sheets"),chips=host.querySelector(".chips"),cv=host.querySelector("canvas"),cap=host.querySelector(".cap"),tilt=host.querySelector('[data-act="tilt"]');
+  const ent=k=>st.list.find(e=>e.k===k);
+  const isMark=k=>idx=>{const u=st.res&&st.res.used;if(!u)return false;return u.some(w=>w.k===k&&Object.keys(w.where).every(a=>!(a in idx)||idx[a]===w.where[a]))};
+  sheets.innerHTML=list.map(e=>`<div class="sheetcard" data-k="${e.k}"></div>`).join("");
+  function sheetHTML(e){
+    const T=e.T,vs=st.vs[e.k],pal=palette(),sc=scaleOf(T),mk=isMark(e.k);
+    const rows=vs.row!==null?dimOf(T,vs.row):1,cols=vs.col!==null?dimOf(T,vs.col):1;
+    const opt=(a,sel)=>T.axes.map(x=>`<option value="${x}"${x===sel?" selected":""}>${x==="nd"?"(n d)":x==="kd"?"(k d)":x}</option>`).join("");
+    let ctl="";
+    if(T.axes.length>=2)ctl+=`<label>rows <select data-sel="row">${opt(0,vs.row)}</select></label><label>columns <select data-sel="col">${opt(0,vs.col)}</select></label>`;
+    for(const a of Object.keys(vs.fixed)){
+      const n=dimOf(T,a);ctl+=`<label>slice ${axName(a)} = <select data-sel="fix" data-ax="${a}">${Array.from({length:n},(_,i)=>`<option value="${i}"${i===vs.fixed[a]?" selected":""}>${i}${T.labels&&T.labels[a]?" "+esc(T.labels[a][i].trim()):""}</option>`).join("")}</select></label>`;
+    }
+    let h=`<div class="shhead"><b>${e.k}</b><span>${esc(e.label||"")}</span><span class="shape">[${T.axes.map(axName).join(", ")||"no axes"}] shape ${T.shape.length?T.shape.join("×"):"single number"}</span></div>`;
+    if(e.desc||T.desc)h+=`<div class="shdesc">${esc(e.desc||T.desc)}</div>`;
+    if(ctl)h+=`<div class="shctl">${ctl}</div>`;
+    h+=`<div class="sheetwrap"><table class="sh"><thead><tr><th class="corner">${vs.row!==null?axName(vs.row)+" ↓ ":""}${vs.col!==null?axName(vs.col)+" →":"value"}</th>`;
+    for(let c2=0;c2<cols;c2++)h+=`<th class="${vs.sel&&vs.col!==null&&vs.sel[vs.col]===c2?"hl":""}">${vs.col!==null?axHead(T,vs.col,c2):"value"}</th>`;
+    h+=`</tr></thead><tbody>`;
+    for(let r=0;r<rows;r++){
+      h+=`<tr><th class="${vs.sel&&vs.row!==null&&vs.sel[vs.row]===r?"hl":""}">${vs.row!==null?axHead(T,vs.row,r):"–"}</th>`;
+      for(let c2=0;c2<cols;c2++){
+        const idx=cellIdx(vs,r,c2),v=tv(T,idx),isSel=st.sel&&st.sel.k===e.k&&T.axes.every(a=>st.sel.idx[a]===idx[a]);
+        h+=`<td class="gc${isSel?" sel":""}${mk(idx)?" mk":""}${Math.abs(v)>=SENT?" ninf":""}" style="background:${rgbs(heat(v,sc,pal,.55))}" data-r="${r}" data-c="${c2}">${fmtCell(v)}</td>`;
+      }
+      h+=`</tr>`;
+    }
+    h+=`</tbody></table></div><div class="cellinfo">${cellInfo(e)}</div>`;
+    return h;
+  }
+  function cellInfo(e){
+    const s=st.sel&&st.sel.k===e.k?st.sel.idx:null;
+    if(!s)return"Click a cell to see its index and full value.";
+    const v=tv(e.T,s),T=e.T,sp=Object.keys(s).filter(a=>T.split&&T.split[a]).map(a=>` (that is ${T.split[a][0]}=${Math.floor(s[a]/T.split[a][1])}, d=${s[a]%T.split[a][1]})`).join("");
+    return`<b>${e.k}[${IDX(s)}]</b>${sp} = <b>${Math.abs(v)>=SENT?"−∞ (stored as "+v+")":v}</b>`;
+  }
+  function paintSheet(e){
+    const card=sheets.querySelector(`[data-k="${e.k}"]`),w=card.querySelector(".sheetwrap"),sl=w?[w.scrollLeft,w.scrollTop]:[0,0];
+    card.innerHTML=sheetHTML(e);
+    const w2=card.querySelector(".sheetwrap");w2.scrollLeft=sl[0];w2.scrollTop=sl[1];
+  }
+  function paintChips(){
+    chips.innerHTML=list.map(e=>`<button type="button" data-k="${e.k}" aria-pressed="${e.k===st.cur}">${e.k}</button>`).join("");
+  }
+  function paint3D(){
+    const e=ent(st.cur),vs=st.vs[st.cur];tilt.value=Math.round(vs.pitch*180/Math.PI);
+    const lim=draw3D(cv,e.T,vs,isMark(st.cur));
+    cap.innerHTML=`Drag to rotate, click a cell to select it. Showing <b>${e.k}</b>${lim&&lim.length?`. To keep it readable only ${lim.join(", ")} are drawn (shown as …).`:"."} The dashed frame is the slice shown in the spreadsheet.`;
+    cv.setAttribute("aria-label",`3D block of ${e.k}, shape ${e.T.shape.join(" by ")}. Drag to rotate.`);
+  }
+  function all(){list.forEach(paintSheet);paintChips();paint3D()}
+  function select(k,idx){
+    const e=ent(k),vs=st.vs[k];
+    vs.sel=idx;for(const a of Object.keys(vs.fixed))vs.fixed[a]=idx[a];
+    st.sel={k,idx};st.cur=k;
+    st.res=o.check?o.check(k,idx,e.T):null;
+    list.forEach(x=>{if(x.k!==k)st.vs[x.k].sel=null});
+    all();
+    if(o.onSelect)o.onSelect(st);
+  }
+  sheets.addEventListener("click",ev=>{
+    const td=ev.target.closest("td.gc");if(!td)return;
+    const card=td.closest(".sheetcard"),k=card.dataset.k,e=ent(k),vs=st.vs[k];
+    select(k,cellIdx(vs,+td.dataset.r,+td.dataset.c));
+  });
+  sheets.addEventListener("change",ev=>{
+    const s=ev.target.closest("select");if(!s)return;
+    const card=s.closest(".sheetcard"),k=card.dataset.k,e=ent(k),vs=st.vs[k],T=e.T,kind=s.dataset.sel;
+    if(kind==="fix")vs.fixed[s.dataset.ax]=+s.value;
+    else{
+      const nv=s.value;
+      if(kind==="row"){if(nv===vs.col)vs.col=vs.row;vs.row=nv}else{if(nv===vs.row)vs.row=vs.col;vs.col=nv}
+      fixAll(T,vs);
+    }
+    st.cur=k;paintSheet(e);paintChips();paint3D();
+  });
+  chips.addEventListener("click",ev=>{const b=ev.target.closest("button");if(!b)return;st.cur=b.dataset.k;paintChips();paint3D()});
+  host.querySelector('[data-act="reset"]').addEventListener("click",()=>{const vs=st.vs[st.cur];vs.yaw=-.62;vs.pitch=.5;tilt.value=29;paint3D()});
+  tilt.addEventListener("input",()=>{const vs=st.vs[st.cur];vs.pitch=tilt.value*Math.PI/180;paint3D()});
+  /* one canvas, but each tensor keeps its own rotation */
+  const proxy={get yaw(){return st.vs[st.cur].yaw},set yaw(x){st.vs[st.cur].yaw=x},get pitch(){return st.vs[st.cur].pitch},set pitch(x){st.vs[st.cur].pitch=x;tilt.value=Math.round(x*180/Math.PI)}};
+  bind3D(cv,proxy,paint3D,(x,y)=>{
+    const idx=hit3D(cv,x,y);if(!idx)return;select(st.cur,idx);
+  });
+  const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(()=>paint3D()):null;if(ro)ro.observe(cv);
+  const ctl={st,select,redraw:all,destroy(){if(ro)ro.disconnect()}};
+  ACTIVE.push(ctl);
+  all();
+  if(o.sel0)select(o.sel0.k,o.sel0.idx);
+  return ctl;
+}
+const midIdx=T=>{const o={};T.axes.forEach((a,i)=>{o[a]=Math.floor(T.shape[i]/2)});return o};
+
+/* ---------------- check box ---------------- */
+function checkHTML(st,note){
+  if(!st.sel)return`<p class="muted">Click any cell of a result tensor, in the spreadsheet or in the 3D view.</p>`;
+  if(!st.res)return`<p><b>${st.sel.k}</b> is an input here, so there is nothing to recompute. Click a cell of a result tensor.</p>`;
+  const r=st.res,diff=Math.abs(r.computed-r.stored),ok=diff<1e-4;
+  return`<div class="calc"><div class="what">${r.title}</div>${r.lines.map(l=>`<div class="line">${l}</div>`).join("")}</div>
+   <div class="result ${ok?"ok":"bad"}"><span>recomputed here: <b>${fy(r.computed)}</b></span><span>stored value: <b>${fy(r.stored)}</b></span><span>difference: <b>${diff.toExponential(1)}</b></span><span class="verdict">${ok?"They match (within 0.0001)":"Mismatch"}</span></div>`;
+}
+
+/* ===================================================================== */
+/*  PART 3. Lessons                                                      */
+/* ===================================================================== */
+const X0=R.x0;
+const tokensStr=TOKS.map(t=>`"${esc(t)}"`).join(", ");
+const E=(label)=>label;
+const ent=(k,T,label,desc)=>({k,T,label,desc});
+const real=(k,label)=>ent(k,R[k],label);
+const realCheck=(k,i)=>hasChk(k)?CHK[k](i):null;
+
+/* toy check tables */
+const toyChecks={
+  flat:(k,i,T)=>chkFlat(k,i,T),
+  elem:{P:(i)=>{const a=V0(TOYS.A,i),b=V0(TOYS.Bm,i),c=a*b;return RES(`${nm("P",i)} = A × B (same place)`,c,V0(TOYS.P,i),[`A[${IDX(i)}] × B[${IDX(i)}] = ${fx(a)} × ${fx(b)} = <b>${fx(c)}</b>`],[{k:"A",where:i},{k:"B2",where:i}])}},
+  sumh:{S:(i)=>{const v=[0,1,2].map(h=>V0(TOYS.P,{t:i.t,h}));const c=sum(v);return RES(`${nm("S",i)} = sum over h of P`,c,V0(TOYS.Sh,i),[`Letter h is on the left but not on the right, so it is summed.`,`S[t=${i.t}] = ${v.map(fx).join(" + ")} = <b>${fx(c)}</b>`],[{k:"P",where:{t:i.t}}])}},
+  sumt:{S2:(i)=>{const v=[0,1].map(t=>V0(TOYS.P,{t,h:i.h}));const c=sum(v);return RES(`${nm("S2",i)} = sum over t of P`,c,V0(TOYS.St,i),[`Now t disappears, so t is summed and h stays.`,`S2[h=${i.h}] = ${v.map(fx).join(" + ")} = <b>${fx(c)}</b>`],[{k:"P",where:{h:i.h}}])}},
+  dot:{dot:()=>{const p=[0,1,2].map(h=>[V0(TOYS.dx,{h}),V0(TOYS.dw,{h})]),c=sum(p.map(a=>a[0]*a[1]));return RES(`dot = sum over h of x × w`,c,TOYS.dd.data[0],[`Multiply the cells that share the same h, then add.`,p.map(a=>`${fx(a[0])}×${fx(a[1])}`).join(" + ")+` = <b>${fx(c)}</b>`],[{k:"x",where:{}},{k:"w",where:{}}])}},
+  mm:{Y:(i)=>{const p=[0,1,2].map(h=>[V0(TOYS.X,{t:i.t,h}),V0(TOYS.W,{h,o:i.o})]),c=sum(p.map(a=>a[0]*a[1]));
+    return RES(`${nm("Y",i)} = sum over h of X[t,h] × W[h,o]`,c,V0(TOYS.Y,i),[`Take row t=${i.t} of X and column o=${i.o} of W. Multiply pair by pair, then add.`,p.map(a=>`${fx(a[0])}×${fx(a[1])}`).join(" + ")+` = <b>${fx(c)}</b>`],[{k:"X",where:{t:i.t}},{k:"W",where:{o:i.o}}])}},
+  split:{X3:(i)=>{const j={t:i.t,nd:i.n*3+i.d},c=V0(TOYS.Xf,j);return RES(`${nm("X3",i)} = X[t=${i.t}, nd=${j.nd}]`,c,V0(TOYS.X3,i),[`Column nd = n × 3 + d = ${i.n} × 3 + ${i.d} = ${j.nd}. The numbers do not move. Only the way we count them changes.`],[{k:"X",where:j}])}},
+  tr:{Xh:(i)=>{const c=V0(TOYS.X3,{t:i.t,n:i.n,d:i.d});return RES(`${nm("Xh",i)} = X3[t=${i.t}, n=${i.n}, d=${i.d}]`,c,V0(TOYS.Xh,i),[`Same number, new place: the axes are only listed in a different order.`],[{k:"X3",where:{t:i.t,n:i.n,d:i.d}}])}}
+};
+function V0(T,o){return tv(T,o)}
+
+const sm=a=>{const m=Math.max(...a),e=a.map(x=>Math.exp(x-m)),s=sum(e);return e.map(x=>x/s)};
+const f3=x=>x.toFixed(4);
+
+const LESSONS=[
+/* ---------------------------------- 1 ---------------------------------- */
+{title:"A tensor is a grid of numbers",
+ intro:`<p>A <b>tensor</b> is a box of numbers. That is all it is. Every direction of the box gets a name, called an <b>axis</b>. The <b>shape</b> says how long each axis is.</p>
+  <p>We will use one letter per axis. The same letter always has the same color, in every lesson. In a language model, <span class="dim dim-t">t</span> is the position of a token in the text and <span class="dim dim-h">h</span> is the list of numbers that describe one token.</p>`,
+ parts:[
+  {title:"Scalar and vector",text:`A <b>scalar</b> has no axis. It is one number. A <b>vector</b> has one axis. Here the axis is <span class="dim dim-h">h</span>, it is 4 cells long, so the shape is [4]. Click a cell.`,
+   formula:`scalar: no axes, shape [ ]        vector: one axis, shape [4]`,
+   tensors:[ent("s",TOYS.sc,"scalar: just one number"),ent("v",TOYS.vec,"vector: a row of numbers")],check:(k,i,T)=>chkFlat(k,i,T)},
+  {title:"Matrix",text:`A <b>matrix</b> has two axes. Rows go along <span class="dim dim-t">t</span>, columns go along <span class="dim dim-h">h</span>. The shape is [3, 4]: 3 rows and 4 columns. The cell in row 2, column 1 has the index (t=2, h=1).`,
+   formula:`matrix M: axes t, h    shape [3, 4]    12 numbers`,
+   tensors:[ent("M",TOYS.Mat,"matrix with 3 rows (t) and 4 columns (h)")],check:(k,i,T)=>chkFlat(k,i,T)},
+  {title:"3D block",text:`A 3D tensor with three axes is a stack of matrices. Axis <span class="dim dim-n">n</span> says which matrix, <span class="dim dim-t">t</span> the row and <span class="dim dim-h">h</span> the column. The shape is [2, 3, 4]. Drag the block to rotate it. The dashed frame in the 3D view is the slice you see in the spreadsheet. Change it with the <i>slice</i> menu.`,
+   formula:`block B: axes n, t, h    shape [2, 3, 4]    24 numbers`,
+   tensors:[ent("B",TOYS.Blk,"two matrices stacked (axis n)")],check:(k,i,T)=>chkFlat(k,i,T)},
+  {title:"A real tensor",text:`Now a real one. We gave the tiny Qwen3 model the text <b>${esc(DATA.meta.text)}</b>. It cut it into 5 tokens (${tokensStr}). The embedding step turns each token into 8 numbers. So the tensor has the shape [5, 8], with axes <span class="dim dim-t">t</span> and <span class="dim dim-h">h</span>. These numbers are real and come from the file <code>tensors.json</code>.`,
+   formula:`x0: axes t, h    shape [5, 8]    40 numbers    (b = 1 is dropped)`,
+   tensors:[real("x0","embedding of the 5 tokens")],check:realCheck,
+   note:`The model also has a batch axis <span class="dim dim-b">b</span> (how many texts run together). Here b = 1, so we do not draw it.`}
+ ]},
+/* ---------------------------------- 2 ---------------------------------- */
+{title:"Elementwise operations and sums",
+ intro:`<p>Two simple things can happen to tensors. Either you combine cells that sit in the same place (<b>elementwise</b>), or you add up cells along one axis (<b>sum over an axis</b>).</p>
+  <p>This is also where we meet <b>einsum</b>. An einsum string names the axes of every input and of the output. The one rule: <b>a letter that is on the left but not on the right is summed away</b>.</p>`,
+ parts:[
+  {title:"Elementwise",text:`Multiply A and B cell by cell. The result has the same shape. Click a cell of <b>P</b> to see which two cells were multiplied.`,
+   ein:"t h, t h -> t h",
+   tensors:[ent("A",TOYS.A,"input"),ent("B2",TOYS.Bm,"input"),ent("P",TOYS.P,"result: A × B")],check:tcheck(toyChecks.elem)},
+  {title:"Sum over h",text:`Take P from the last part and add up each row. The letter <span class="dim dim-h">h</span> is on the left but not on the right, so it disappears. It was summed. Axis <span class="dim dim-t">t</span> stays, so we get one number for each t.`,
+   ein:"t h -> t",
+   tensors:[ent("P",TOYS.P,"input (from the last part)"),ent("S",TOYS.Sh,"result: one number per t")],check:tcheck(toyChecks.sumh)},
+  {title:"Sum over t",text:`Same P, but now <span class="dim dim-t">t</span> disappears. We add down each column. One number is left for each <span class="dim dim-h">h</span>. The letter that you drop decides which direction is added.`,
+   ein:"t h -> h",
+   tensors:[ent("P",TOYS.P,"input"),ent("S2",TOYS.St,"result: one number per h")],check:tcheck(toyChecks.sumt)}
+ ]},
+/* ---------------------------------- 3 ---------------------------------- */
+{title:"Dot product and matrix multiply",
+ intro:`<p>A <b>dot product</b> multiplies two vectors cell by cell and adds the results. In einsum: <span class="einsum" style="display:inline;padding:2px 6px">${colorize("h, h ->")}</span>. The letter h is on the left twice and not on the right, so it is summed.</p>
+  <p>A <b>matrix multiply</b> does a dot product for every pair of a row of X and a column of W. This is the main operation of a neural network. Almost every weight in a transformer is used this way.</p>`,
+ parts:[
+  {title:"Dot product",text:`x and w each have 3 cells along <span class="dim dim-h">h</span>. Multiply the cells that share an h, then add. The result has no axis, so it is a scalar.`,
+   ein:"h, h ->",tensors:[ent("x",TOYS.dx,"vector"),ent("w",TOYS.dw,"vector"),ent("dot",TOYS.dd,"result: a scalar")],check:tcheck(toyChecks.dot),sel0:{k:"dot",idx:{}}},
+  {title:"Matrix multiply",text:`Each output cell is a dot product. <b>Click a cell of Y.</b> The row of X and the column of W that were used turn orange, and the multiply-add is shown below.`,
+   ein:"t h, h o -> t o",tensors:[ent("X",TOYS.X,"input: 2 tokens × 3 numbers"),ent("W",TOYS.W,"weights: 3 inputs × 2 outputs"),ent("Y",TOYS.Y,"result: 2 tokens × 2 outputs")],check:tcheck(toyChecks.mm),sel0:{k:"Y",idx:{t:1,o:1}}},
+  {title:"In the real model",text:`The first step of attention is the same maths. The normalized token <b>norm1</b> (5 × 8) is multiplied by the query weights <b>Wq</b> to give <b>q_lin</b> (5 × 64). PyTorch stores a weight as [out, in], so the weight has h last: in the spreadsheet of Wq, one <i>row</i> (fixed n and d) is the vector that gets multiplied. It is the same dot product, with the weight turned on its side. The 64 output columns are 4 heads of 16 numbers each (lesson 4).`,
+   ein:"t h, (n d) h -> t (n d)",tensors:[real("norm1","input"),real("Wq","weights, layout [n d h]"),real("q_lin","result: all 4 query heads in one row")],check:realCheck,sel0:{k:"q_lin",idx:{t:2,nd:21}}}
+ ]},
+/* ---------------------------------- 4 ---------------------------------- */
+{title:"Reshape and transpose",
+ intro:`<p>Not every operation does arithmetic. <b>Reshape</b> and <b>transpose</b> only change how we <i>look</i> at the same numbers. Attention uses them to split one long vector per token into several <b>heads</b>.</p>
+  <p>The notation <span class="mono">(n d)</span> in einsum means "two axes glued into one". Position <span class="mono">n</span>×(length of d)+<span class="mono">d</span> in the glued axis. Think of numbering the houses in a street: house 17 is the same house as "block 2, number 5".</p>`,
+ parts:[
+  {title:"Split into heads",text:`X has 6 numbers per token. We split them into n=2 heads with d=3 numbers each. The flat list of numbers is exactly the same. Click a cell of X3: it points back to one cell of X. In the spreadsheet of X, the column header shows both readings (for example n1 d2 is column 5).`,
+   ein:"t (n d) -> t n d",tensors:[ent("X",TOYS.Xf,"input, 6 columns glued from (n d)"),ent("X3",TOYS.X3,"result: same numbers, 3 axes")],check:tcheck(toyChecks.split),sel0:{k:"X3",idx:{t:1,n:1,d:1}}},
+  {title:"Move the heads first",text:`Attention wants the head axis at the front, so every head can be handled on its own. We only reorder the axes. Look at the 3D view of X3 and then of Xh: the block is the same, turned around.`,
+   ein:"t n d -> n t d",tensors:[ent("X3",TOYS.X3,"input"),ent("Xh",TOYS.Xh,"result: heads first")],check:tcheck(toyChecks.tr),sel0:{k:"Xh",idx:{n:1,t:0,d:2}}},
+  {title:"In the real model",text:`The real query vectors are split in the same way: 64 numbers per token become 4 heads × 16 numbers. <b>q_lin</b> has shape [t, (n d)] = [5, 64]. <b>q_heads</b> has shape [n, t, d] = [4, 5, 16]. Keys and values are split into only 2 heads (more on this in lesson 6).`,
+   ein:"t (n d) -> n t d",tensors:[real("q_lin","flat, [t, (n d)]"),real("q_heads","split into heads, [n, t, d]")],check:realCheck,sel0:{k:"q_heads",idx:{n:2,t:3,d:5}}}
+ ]},
+/* ---------------------------------- 5 ---------------------------------- */
+{title:"RMSNorm and softmax",
+ intro:`<p>Two small functions appear everywhere in a transformer. <b>RMSNorm</b> rescales a vector so that its numbers have a typical size of about 1. <b>Softmax</b> turns a list of any numbers into a list of positive weights that add up to 1.</p>
+  <p>Both work along one axis only. They do not mix different tokens.</p>`,
+ parts:(()=>{
+  const xs=[3,4],ms=sum(xs.map(x=>x*x))/2,r=Math.sqrt(ms+CFG.eps);
+  const z=[1,2,3],sz=sm(z);
+  return[
+  {title:"RMSNorm",text:`RMS means "root mean square". For one token: square each number, take the mean, take the square root. Then divide every number by that and multiply by a learned scale <b>w</b>. In this tiny model all scales w are exactly 1.0, so the multiply does nothing visible. In a trained model they differ. The embeddings here are tiny (about 0.02), and after the norm they are about 1: that is the point of the layer.`,
+   formula:`y[t,h] = x[t,h] / √( mean over h of x² + 1e-6 ) × w[h]`,
+   tiny:{title:"Tiny example: one token with 2 numbers [3, 4]",lines:[`squares: 9, 16      mean: ${ms}`,`rms = √(${ms}) = ${f3(r)}`,`y = [3 ÷ ${f3(r)}, 4 ÷ ${f3(r)}] = [${f3(3/r)}, ${f3(4/r)}]`]},
+   tensors:[real("x0","input: embedding"),real("g_norm1","scale w (all 1.0)"),real("norm1","result: RMSNorm(x0)")],check:realCheck,sel0:{k:"norm1",idx:{t:3,h:4}}},
+  {title:"Softmax",text:`Softmax makes each number positive with <span class="mono">exp</span>, then divides by the sum. Big numbers get big weights. A number of minus infinity gets weight 0. Below, the real attention scores of 4 heads are turned into weights. Click a cell of <b>weights</b>. The mask is explained in the next lesson. For now: it adds −∞ to the cells that a token may not look at.`,
+   formula:`weights[n,t,s] = exp(z[s]) / Σ over s' of exp(z[s'])      with z = score + mask`,
+   tiny:{title:"Tiny example: scores [1, 2, 3]",lines:[`exp: ${z.map(x=>Math.exp(x).toFixed(3)).join(", ")}      sum = ${sum(z.map(Math.exp)).toFixed(3)}`,`weights = [${sz.map(f3).join(", ")}]   they add up to ${sum(sz).toFixed(1)}`]},
+   tensors:[real("scores","input: scores"),real("mask","mask: 0 or −∞"),real("weights","result: softmax over s")],check:realCheck,sel0:{k:"weights",idx:{n:0,t:3,s:1}}}
+ ]})()},
+/* ---------------------------------- 6 ---------------------------------- */
+{title:"Attention, step by step",
+ intro:`<p>Attention lets each token collect information from earlier tokens. Each token makes a <b>query</b> q ("what am I looking for?"), a <b>key</b> (a label) and a <b>value</b> (the content). Then:</p>
+  <p>1. Compare the query of token <span class="dim dim-t">t</span> with the key of token <span class="dim dim-s">s</span>. This gives a <b>score</b>. 2. Hide the future with a <b>mask</b>, and use softmax to turn the scores into weights. 3. Add up the values, weighted by those weights.</p>`,
+ parts:[
+  {title:"1. Prepare q and k",text:`Before the comparison, q (and k) are normalized by an RMSNorm over <span class="dim dim-d">d</span> and then rotated by <b>RoPE</b>. RoPE rotates the pair of numbers (d, d+8) of each head by an angle that grows with the token position t. This way a score depends on how far apart two tokens are. Here you can check the rotation of one number.`,
+   formula:`q_rope[n,t,d] = q[n,t,d] × cos[t,d]  ±  q[n,t,d±8] × sin[t,d]       (minus for d < 8, plus for d ≥ 8)`,
+   tensors:[real("q_norm","q after q_norm"),real("cos","cos table"),real("sin","sin table"),real("q_rope","result: q after RoPE")],check:realCheck,sel0:{k:"q_rope",idx:{n:1,t:3,d:2}}},
+  {title:"2. Scores and shared heads",text:`The score of query token t and key token s is the dot product of their vectors over <span class="dim dim-d">d</span>, times 1/√16 = 0.25. This is the same matrix multiply as lesson 3, once for each head. <b>GQA</b> (grouped-query attention): this model has 4 query heads but only 2 key/value heads. Each key head is shared by 2 query heads: heads 0 and 1 use key head 0, heads 2 and 3 use key head 1. This saves memory, because keys and values are what we store for every past token. Gemma 4 E2B goes further with 8 query heads and a single key head.`,
+   ein:"n t d, k s d -> n t s",extra:"gqa",goneNote:"Only d is summed. The letter k is not summed: it just picks the shared key head for each n (k = n \u00f7 2, rounded down).",
+   tensors:[real("q_rope","queries, 4 heads"),real("k_rope","keys, only 2 heads"),real("scores","result: scores")],check:realCheck,sel0:{k:"scores",idx:{n:2,t:3,s:1}}},
+  {title:"3. Causal mask and softmax",text:`A language model must not look at the future. The <b>mask</b> is 0 where token s is not later than token t, and −∞ where it is. We add it to the scores. After softmax, the −∞ cells become exactly 0 and every row adds up to 1. In the spreadsheet of <b>mask</b>, −∞ is shown for the blocked cells (stored as −1e9).`,
+   ein:"n t s, t s -> n t s   then softmax over s",
+   tensors:[real("scores","scores"),real("mask","causal mask"),real("weights","result: attention weights")],check:realCheck,sel0:{k:"weights",idx:{n:2,t:3,s:1}}},
+  {title:"4. Weighted sum of values",text:`The output for token t is the sum of the value vectors of all tokens s, each multiplied by its weight. The letter <span class="dim dim-s">s</span> disappears, so it is summed. The result has the same shape as q: one vector of 16 numbers for each head and token. Here again, each value head is read by 2 query heads.`,
+   ein:"n t s, k s d -> n t d",goneNote:"Only s is summed. The letter k just picks the shared value head for each n (k = n \u00f7 2, rounded down).",tensors:[real("weights","weights"),real("v_heads","values, 2 heads"),real("ctx","result: mixed values")],check:realCheck,sel0:{k:"ctx",idx:{n:2,t:3,d:5}}}
+ ]},
+/* ---------------------------------- 7 ---------------------------------- */
+{title:"The gated MLP",
+ intro:`<p>After attention, every token goes through a small network <b>on its own</b>. No token looks at another one here. Attention mixes <i>across</i> tokens, the MLP works <i>inside</i> each token.</p>
+  <p>Qwen3 uses a <b>gated</b> MLP: two matrix multiplies from 8 numbers up to 32 (<b>gate</b> and <b>up</b>), a smooth switch called <b>SiLU</b> on the gate, a multiply, and a matrix multiply back down to 8 numbers.</p>`,
+ parts:(()=>{
+  const sl=x=>x/(1+Math.exp(-x));
+  return[
+  {title:"Gate and up",text:`Both are matrix multiplies of the same input <b>norm2</b> with different weights. The letter <span class="dim dim-h">h</span> (8 numbers) disappears and the letter <span class="dim dim-i">i</span> (32 numbers) appears. Click a cell of <b>gate</b> or <b>up</b>.`,
+   ein:"t h, i h -> t i",tensors:[real("norm2","input"),real("Wgate","gate weights [i h]"),real("gate","result: gate"),real("Wup","up weights [i h]"),real("up","result: up")],check:realCheck,sel0:{k:"gate",idx:{t:3,i:7}}},
+  {title:"SiLU and multiply",text:`<b>SiLU(x) = x / (1 + e<sup>−x</sup>)</b> is a smooth switch. For a big positive x it returns about x. For a big negative x it returns about 0. We apply it to the gate, then multiply with up, cell by cell. The gate decides how much of "up" passes through.`,
+   formula:`act_up[t,i] = SiLU( gate[t,i] ) × up[t,i]`,
+   tiny:{title:"Tiny example: SiLU of 2, 0 and −2",lines:[`SiLU(2) = ${f3(sl(2))}      SiLU(0) = ${f3(sl(0))}      SiLU(−2) = ${f3(sl(-2))}`]},
+   tensors:[real("gate","gate"),real("act","SiLU(gate)"),real("up","up"),real("act_up","result: SiLU(gate) × up")],check:realCheck,sel0:{k:"act_up",idx:{t:3,i:7}}},
+  {title:"Down and residual",text:`The last matrix multiply goes back from 32 to 8 numbers: <span class="dim dim-i">i</span> disappears. Then we add the result to the input of the MLP (<b>res1</b>). This is the <b>residual connection</b>: a layer only adds a change, so the old information is never lost.`,
+   ein:"t i, h i -> t h",tensors:[real("act_up","input"),real("Wdown","down weights [h i]"),real("down","result: down"),real("res1","res1 (input of the MLP block)"),real("res2","result: res2 = res1 + down")],check:realCheck,sel0:{k:"res2",idx:{t:3,h:4}}}
+ ]})()},
+/* ---------------------------------- 8 ---------------------------------- */
+{title:"Put it together: the whole layer-0 graph",graph:true,
+ intro:`<p>Now we connect every part we met. Each box below is a <b>real tensor</b> of the tiny Qwen3 model, for the text <b>${esc(DATA.meta.text)}</b>. Each arrow means "this tensor was computed from that one". The left column is the <b>residual stream</b>: the main road that every layer adds to.</p>
+  <p>Click a box. You see its real numbers in the 3D view and in the spreadsheet, its einsum, and a button that recomputes one cell from the parent tensors.</p>`},
+/* ---------------------------------- 9 ---------------------------------- */
+{title:"Bridge to our model: Gemma 4 E2B",bridge:true,
+ intro:`<p>OpenJev uses Gemma 4 E2B. It has the same graph, with the same einsums, but bigger sizes and a few extras. Below, the shapes of the layer-0 graph for the tiny model and for Gemma. Then the mask lab from the first version of this page.</p>`}
+];
+
+/* ===================================================================== */
+/*  PART 4. Graph of the layer                                           */
+/* ===================================================================== */
+const LANE={TR:88,Q:235,K:380,V:525,QK:307,KV:452},NW=124,NH=40,RH=58,TOP=30;
+const GN=[
+ {id:"ids",c:"TR",r:0,kind:"in",t:"Token ids",ein:"text -> t",plain:"The tokenizer cuts the text into 5 tokens and gives each an id number. It is the only input of the model.",par:[]},
+ {id:"x0",c:"TR",r:1,kind:"in",t:"Embedding",ein:"t, v h -> t h",plain:"Each id picks one row of the embedding table E (151,936 rows of 8 numbers). Only the 5 rows that we used are exported. A lookup is the same as a matrix multiply with a one-hot vector.",par:[{id:"ids"}],w:["E_rows"]},
+ {sel:{t:3,h:4},id:"norm1",c:"TR",r:2,kind:"norm",t:"RMSNorm",ein:"t h, h -> t h",plain:"Rescales each token so its 8 numbers have a size of about 1, then multiplies by the learned scale w (all 1.0 here). See lesson 5.",par:[{id:"x0"}],w:["g_norm1"]},
+ {sel:{t:2,nd:37},id:"q_lin",c:"Q",r:3,kind:"lin",t:"q projection",ein:"t h, (n d) h -> t (n d)",plain:"Matrix multiply: each token gets 64 numbers, that is 4 query heads of 16. See lesson 3.",par:[{id:"norm1"}],w:["Wq"]},
+ {id:"k_lin",c:"K",r:3,kind:"lin",t:"k projection",ein:"t h, (k d) h -> s (k d)",plain:"Each token gets 32 numbers: 2 key heads of 16. The token axis of keys is called s (the token that is looked at); it is the same tokens as t.",par:[{id:"norm1"}],w:["Wk"]},
+ {id:"v_lin",c:"V",r:3,kind:"lin",t:"v projection",ein:"t h, (k d) h -> s (k d)",plain:"Each token gets 32 numbers: 2 value heads of 16.",par:[{id:"norm1"}],w:["Wv"]},
+ {sel:{n:2,t:3,d:5},id:"q_heads",c:"Q",r:4,kind:"re",t:"q heads",ein:"t (n d) -> n t d",plain:"Reshape and transpose only. No arithmetic. See lesson 4.",par:[{id:"q_lin"}]},
+ {id:"k_heads",c:"K",r:4,kind:"re",t:"k heads",ein:"s (k d) -> k s d",plain:"Reshape and transpose only.",par:[{id:"k_lin"}]},
+ {id:"v_heads",c:"V",r:4,kind:"re",t:"v heads",ein:"s (k d) -> k s d",plain:"Reshape and transpose only.",par:[{id:"v_lin"}]},
+ {id:"q_norm",c:"Q",r:5,kind:"norm",t:"q_norm",ein:"n t d, d -> n t d",plain:"Qwen3 normalizes every query head with an RMSNorm over d.",par:[{id:"q_heads"}],w:["g_qnorm"]},
+ {id:"k_norm",c:"K",r:5,kind:"norm",t:"k_norm",ein:"k s d, d -> k s d",plain:"The same for the keys.",par:[{id:"k_heads"}],w:["g_knorm"]},
+ {sel:{n:1,t:3,d:2},id:"q_rope",c:"Q",r:6,kind:"re",t:"q RoPE",ein:"n t d, t d, t d -> n t d",plain:"Rotates the numbers (d, d+8) of each query by an angle that depends on the token position. See lesson 6.",par:[{id:"q_norm"}],w:["cos","sin"]},
+ {sel:{k:1,t:3,d:2},id:"k_rope",c:"K",r:6,kind:"re",t:"k RoPE",ein:"k s d, s d, s d -> k s d",plain:"The same rotation for the keys.",par:[{id:"k_norm"}],w:["cos","sin"]},
+ {sel:{n:2,t:3,s:1},id:"scores",c:"QK",r:7,kind:"attn",t:"scores",ein:"n t d, k s d -> n t s",plain:"Dot product of every query with every key, times 0.25. Query head n reads key head k = n ÷ 2 (rounded down): this is GQA.",par:[{id:"q_rope"},{id:"k_rope"}]},
+ {id:"mask",c:"KV",r:7,kind:"attn",t:"causal mask",ein:"t s",plain:"A fixed grid. 0 where token s is not later than token t, minus infinity (stored as −1e9) elsewhere. It has no parents.",par:[]},
+ {sel:{n:2,t:3,s:1},id:"weights",c:"QK",r:8,kind:"attn",t:"softmax weights",ein:"n t s, t s -> n t s  (softmax over s)",plain:"Adds the mask to the scores and applies softmax over s. Every row adds up to 1 and the blocked cells are 0.",par:[{id:"scores"},{id:"mask"}]},
+ {sel:{n:2,t:3,d:5},id:"ctx",c:"QK",r:9,kind:"attn",t:"weighted values",ein:"n t s, k s d -> n t d",plain:"Each token collects the values of the tokens it looks at, weighted by the weights. The letter s is summed.",par:[{id:"weights"},{id:"v_heads",mode:"vR"}]},
+ {id:"ctx_flat",c:"QK",r:10,kind:"re",t:"merge heads",ein:"n t d -> t (n d)",plain:"Puts the 4 heads side by side again: 4 × 16 = 64 numbers per token. No arithmetic.",par:[{id:"ctx"}]},
+ {id:"attn_out",c:"QK",r:11,kind:"lin",t:"o projection",ein:"t (n d), h (n d) -> t h",plain:"Matrix multiply from 64 numbers back to 8. The letters n and d are both summed.",par:[{id:"ctx_flat"}],w:["Wo"],toR:true},
+ {id:"res1",c:"TR",r:12,kind:"res",t:"residual 1",ein:"t h, t h -> t h",plain:"Adds the attention result to the original input x0. The residual connection.",par:[{id:"x0",mode:"skipL"},{id:"attn_out",mode:"toR"}]},
+ {id:"norm2",c:"TR",r:13,kind:"norm",t:"RMSNorm",ein:"t h, h -> t h",plain:"The same kind of norm, before the MLP.",par:[{id:"res1"}],w:["g_norm2"]},
+ {sel:{t:3,i:7},id:"gate",c:"Q",r:14,kind:"mlp",t:"gate",ein:"t h, i h -> t i",plain:"Matrix multiply from 8 to 32 numbers. See lesson 7.",par:[{id:"norm2"}],w:["Wgate"]},
+ {id:"up",c:"K",r:14,kind:"mlp",t:"up",ein:"t h, i h -> t i",plain:"A second matrix multiply from 8 to 32 numbers.",par:[{id:"norm2"}],w:["Wup"]},
+ {id:"act",c:"Q",r:15,kind:"mlp",t:"SiLU(gate)",ein:"t i -> t i",plain:"A smooth switch applied cell by cell: x ÷ (1 + e^−x).",par:[{id:"gate"}]},
+ {sel:{t:3,i:7},id:"act_up",c:"QK",r:16,kind:"mlp",t:"act × up",ein:"t i, t i -> t i",plain:"Cell-by-cell multiply. The gate decides how much of up passes.",par:[{id:"act"},{id:"up"}]},
+ {id:"down",c:"QK",r:17,kind:"mlp",t:"down projection",ein:"t i, h i -> t h",plain:"Matrix multiply from 32 numbers back to 8. The letter i is summed.",par:[{id:"act_up"}],w:["Wdown"]},
+ {sel:{t:3,h:4},id:"res2",c:"TR",r:18,kind:"res",t:"residual 2",ein:"t h, t h -> t h",plain:"Adds the MLP result to res1. This is the output of layer 0.",par:[{id:"res1",mode:"skipL"},{id:"down",mode:"toR"}]},
+ {id:"layer1_out",c:"TR",r:19,kind:"ghost",t:"layer 1 (...)",ein:"layer 1 repeats the graph above",plain:"Layer 1 is the same graph again with its own weights. This is a test model with only 2 layers. We do not draw it a second time, and we did not export its weights, so this box has no cell check. Real models repeat it 28 to 36 times (Gemma 4 E2B: 35).",par:[{id:"res2"}]},
+ {id:"final_norm",c:"TR",r:20,kind:"norm",t:"final RMSNorm",ein:"t h, h -> t h",plain:"The last norm. Its parent is the output of layer 1, not of layer 0.",par:[{id:"layer1_out"}],w:["g_final"]},
+ {sel:{v:0},id:"logits_top5",c:"TR",r:21,kind:"out",t:"top-5 logits",ein:"h, v h -> v",plain:"Only the last token predicts the next word. Its 8 numbers are multiplied with the rows of lm_head (151,936 rows). We keep the 5 largest results. The checkpoint is a test model with random weights, so these tokens are meaningless. The point is the shape of the computation.",par:[{id:"final_norm"}],w:["W_lm_top5"]}
+];
+const GBY=Object.fromEntries(GN.map(n=>[n.id,n]));
+const gx=n=>LANE[n.c],gy=n=>TOP+n.r*RH;
+function edgePath(from,to,mode){
+  const fx_=gx(from),fy_=gy(from),tx=gx(to),ty=gy(to),x1=fx_,y1=fy_+NH/2,x2=tx,y2=ty-NH/2;
+  if(mode==="skipL")return`M ${fx_-NW/2} ${fy_} H 10 V ${ty} H ${tx-NW/2-3}`;
+  if(mode==="toR")return`M ${x1} ${y1} V ${ty} H ${tx+NW/2+3}`;
+  if(mode==="vR")return`M ${x1} ${y1} V ${ty} H ${tx+NW/2+3}`;
+  const ym=(y1+y2)/2;return`M ${x1} ${y1} C ${x1} ${ym}, ${x2} ${ym}, ${x2} ${y2-2}`;
+}
+function graphSVG(){
+  const H=TOP+22*RH-10;
+  let s=`<svg class="graph" viewBox="0 0 600 ${H}" role="group" aria-label="Graph of the layer-0 tensors"><defs>
+   <marker id="arr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--muted)"/></marker>
+   <marker id="arrh" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--warn)"/></marker>
+   <marker id="arro" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L8 4 L0 8 z" fill="var(--accent)"/></marker></defs>`;
+  for(const n of GN)for(const p of n.par)s+=`<path class="edge" data-from="${p.id}" data-to="${n.id}" d="${edgePath(GBY[p.id],n,p.mode)}"/>`;
+  for(const n of GN){
+    const T=R[n.id],shape=T.axes.map(a=>a==="nd"?"nd":a==="kd"?"kd":a).join(" ")+"  "+T.shape.join("×");
+    s+=`<g class="gnode k-${n.kind}" data-id="${n.id}" tabindex="0" role="button" aria-label="${n.t}, shape ${T.shape.join(" by ")}">
+      <rect x="${gx(n)-NW/2}" y="${gy(n)-NH/2}" width="${NW}" height="${NH}" rx="8"/>
+      <text class="t1" x="${gx(n)}" y="${gy(n)-3}" text-anchor="middle">${esc(n.t)}</text>
+      <text class="t2" x="${gx(n)}" y="${gy(n)+12}" text-anchor="middle">${esc(shape)}</text></g>`;
+  }
+  return s+`</svg>`;
+}
+
+/* ===================================================================== */
+/*  PART 5. Bridge to Gemma: sizes table and mask lab                    */
+/* ===================================================================== */
+const GEM={h:1536,n:8,k:1,d:256,i:6144,v:262144};
+function gemShape(T,tn){
+  const m={...GEM,t:tn,s:tn,nd:GEM.n*GEM.d,kd:GEM.k*GEM.d,b:1};
+  return T.axes.map(a=>m[a]);
+}
+const fmtN=n=>n.toLocaleString("en-US");
+const LABTOK=[["<ctx>",0],["refund",0],["please",0],["</ctx>",0],["<q>",0],["<instr>",0],["Which",0],["team?",0],
+ ["<opt>",1],["billing",1],["<flag>",1,"f"],["<opt>",2],["bug",2],["<flag>",2,"f"],["</q>",0]];
+let MODE="prism",selR=10,selC=12;
+function labPositions(){
+  const pos=[];let p=0,base=null,longest=0,cur=-1,start=0;
+  LABTOK.forEach((tk,i)=>{const seg=tk[1];
+    if(seg===0){if(base!==null){p=base+longest;base=null;longest=0}pos.push(p);p++;return}
+    if(base===null)base=p;if(seg!==cur){cur=seg;start=i}
+    pos.push(base+(i-start));longest=Math.max(longest,i-start+1)});
+  return pos;
+}
+function labAllowed(r,c){
+  const sr=LABTOK[r][1],sc=LABTOK[c][1],fr=LABTOK[r][2]==="f";
+  if(MODE==="causal")return c<=r;
+  if(r===c)return true;if(sr===0)return sc===0;if(sc===0)return true;if(sr===sc)return true;
+  if(MODE==="prism"&&fr)return true;return false;
+}
+function labReason(r,c){
+  const a=esc(LABTOK[r][0]),b=esc(LABTOK[c][0]),ok=labAllowed(r,c),sr=LABTOK[r][1],sc=LABTOK[c][1],fr=LABTOK[r][2]==="f";
+  const who=`<b class="mono">${a}</b> (row ${r}) → <b class="mono">${b}</b> (column ${c}): `;
+  if(MODE==="causal")return who+(ok?"allowed, because a causal model sees only earlier tokens.":"blocked, because this token comes later. A causal model never looks ahead.");
+  if(r===c)return who+"allowed. Every token sees itself.";
+  if(sr===0&&sc===0)return who+"allowed. The shared block (state and question) is read in both directions, even toward later tokens.";
+  if(sr===0)return who+"blocked. The shared block never sees an option, so the question is read the same way whatever the options are.";
+  if(sc===0)return who+"allowed. Every option token sees the whole shared block.";
+  if(sr===sc)return who+"allowed. Tokens of the same option see each other in both directions.";
+  if(fr&&MODE==="prism")return who+"allowed. In OpenJev now, a flag also sees the other options of its question, so it can compare them. Prism-1 reports that this can cost 3–5 points; the A/B test will decide.";
+  return who+(fr?"blocked. In the isolated design, a flag sees only the shared block and its own option. Options are compared only by the softmax.":"blocked. An option never sees another option.");
+}
+function renderMask(root){
+  const pos=labPositions(),N=LABTOK.length,tok=i=>esc(LABTOK[i][0]);
+  let h=`<tr><th></th><th></th>${LABTOK.map((t,c)=>`<th class="col${c===selC?" hlc":""}">${tok(c)}</th>`).join("")}</tr>`;
+  h+=`<tr><th></th><th class="muted">pos</th>${pos.map(p=>`<th class="pos">${p}</th>`).join("")}</tr>`;
+  for(let r=0;r<N;r++){
+    h+=`<tr><th class="${r===selR?"hl":""}" style="text-align:right">${tok(r)}</th><th class="pos">${pos[r]}</th>`;
+    for(let c=0;c<N;c++){const on=labAllowed(r,c);
+      h+=`<td><button type="button" class="mcell ${on?(r===c?"self":"on"):""}" data-r="${r}" data-c="${c}" aria-label="${tok(r)} to ${tok(c)}: ${on?"allowed":"blocked"}" ${r===selR&&c===selC?'aria-pressed="true"':""}></button></td>`}
+    h+="</tr>";
+  }
+  root.querySelector("#mask").innerHTML=h;
+  root.querySelector("#mexp").innerHTML=labReason(selR,selC);
+}
+
+/* ===================================================================== */
+/*  PART 6. Page: navigation, lesson rendering                           */
+/* ===================================================================== */
+const SHORT={b:"batch",t:"token (asks)",s:"token (looked at)",h:"hidden size",n:"query head",k:"key/value head",d:"head size",i:"MLP width",v:"vocabulary",o:"output (toy)"};
+function legendHTML(){
+  return`<div class="legend" aria-label="Axis letters"><span class="ttl">Axis letters</span>`+
+   LET.split("").map(c=>`<span class="lg" title="${AXM[c]}"><b class="dim dim-${c}">${c}</b> ${SHORT[c]}</span>`).join("")+`</div>`;
+}
+function einBox(part){
+  if(part.ein){
+    const core=part.ein.split(/\s{2,}/)[0],[l,r]=core.split("->"),ls=(l.match(/[a-z]/g)||[]),rs=(r?r.match(/[a-z]/g):[])||[];
+    const gone=[...new Set(ls.filter(x=>!rs.includes(x)))],sizes={};
+    part.tensors.forEach(e=>e.T.axes.forEach((a,i)=>{
+      if(e.T.split&&e.T.split[a]){sizes[e.T.split[a][0]]=sizes[e.T.split[a][0]]||"?";sizes.d=e.T.split[a][1]}
+      else sizes[a]=e.T.shape[i]}));
+    if(part.ein.includes("(n d)")&&part.tensors.some(e=>e.T.key==="X"&&e.T.split)){sizes.n=2;sizes.d=3}
+    if(part.ein.includes("(n d)")&&part.tensors.some(e=>e.T.real)){sizes.n=NQ;sizes.d=HD}
+    if(part.ein.includes("(k d)")){sizes.k=NK;sizes.d=HD}
+    const sz=Object.keys(sizes).filter(c=>part.ein.includes(c)&&LET.includes(c)&&sizes[c]!=="?").map(c=>`<span>${colorize(c)} = ${sizes[c]}</span>`).join("");
+    return`<div class="einbox"><div class="einsum" aria-label="einsum">${colorize(part.ein)}</div>
+     <div class="einnote">${sz?`<span>Axis sizes here:</span>${sz}`:""}<span>${part.goneNote?part.goneNote:r!==undefined?(gone.length?`Disappears (summed): ${gone.map(colorize).join(", ")}`:"No letter disappears: nothing is summed."):""}</span></div></div>`;
+  }
+  if(part.formula)return`<div class="einbox"><div class="einsum formula">${colorize(esc(part.formula))}</div></div>`;
+  return"";
+}
+function tinyBox(t){return t?`<div class="tiny"><span class="tinyttl">${t.title}</span>${t.lines.map(l=>`<span>${esc(l)}</span>`).join("")}</div>`:""}
+function gqaHTML(){
+  return`<div class="einbox"><h4>Who shares which key head (GQA)</h4><div class="gqa" id="gqa">${Array.from({length:NQ},(_,n)=>`<div data-n="${n}">query head ${n}<br>→ key head ${Math.floor(n/GRP)}</div>`).join("")}</div></div>`;
+}
+
+let LI=0;const PI={},DONE=new Set();
+const $=(s,e)=>(e||document).querySelector(s);
+function renderNav(){
+  $("#nav").innerHTML=`<ol>${LESSONS.map((L,i)=>`<li><button type="button" data-i="${i}" class="${DONE.has(i)?"done":""}" aria-current="${i===LI}"><span class="num">${i+1}</span><span>${L.title}</span></button></li>`).join("")}</ol>`;
+  $("#progTxt").textContent=`Lesson ${LI+1} of ${LESSONS.length}: ${LESSONS[LI].title}`;
+  $("#progBar").style.width=((LI+1)/LESSONS.length*100)+"%";
+}
+function go(i){
+  LI=Math.max(0,Math.min(LESSONS.length-1,i));DONE.add(LI);
+  try{history.replaceState(null,"","#l"+(LI+1))}catch(_){}
+  $("#nav").classList.remove("open");$("#navBtn").setAttribute("aria-expanded","false");
+  renderNav();renderLesson();window.scrollTo({top:0});
+}
+function lessonNav(){return`<div class="nav2"><button class="btn" type="button" data-go="prev" ${LI===0?"disabled":""}>Previous</button><button class="btn primary" type="button" data-go="next" ${LI===LESSONS.length-1?"disabled":""}>Next lesson</button></div>`}
+function renderLesson(){
+  ACTIVE.forEach(a=>a.destroy&&a.destroy());ACTIVE.length=0;
+  const L=LESSONS[LI],main=$("#main");
+  let h=`${legendHTML()}<div class="lhead"><div class="eyebrow">Lesson ${LI+1} of ${LESSONS.length}</div><h2>${L.title}</h2></div><div class="card intro">${L.intro}</div>`;
+  if(L.parts&&L.parts.length>1){PI[LI]=PI[LI]||0;h+=`<div class="tabs" role="group" aria-label="Parts of this lesson">${L.parts.map((p,i)=>`<button type="button" data-p="${i}" aria-pressed="${i===PI[LI]}">${i+1}. ${p.title.replace(/^\d\.\s*/,"")}</button>`).join("")}</div>`}
+  h+=`<div id="body"></div>${lessonNav()}`;
+  main.innerHTML=h;
+  if(L.graph)renderGraph($("#body"));else if(L.bridge)renderBridge($("#body"));else renderPart($("#body"),L.parts[PI[LI]||0]);
+}
+function renderPart(host,part){
+  host.innerHTML=`<div class="card"><h3>${part.title.replace(/^\d\.\s*/,"")}</h3><p>${part.text}</p>${part.note?`<p class="note">${part.note}</p>`:""}${tinyBox(part.tiny)}${einBox(part)}${part.extra==="gqa"?gqaHTML():""}
+    <div id="vw"></div>
+    <div class="check"><h3>Check it</h3><div id="chk"></div><div class="row"><button class="btn small" type="button" id="rnd">Pick a random result cell</button></div></div></div>`;
+  const outs=part.tensors.filter(e=>part.check&&part.check(e.k,midIdx(e.T),e.T)).map(e=>e);
+  const chkEl=$("#chk",host);
+  const ctl=mountViewer($("#vw",host),part.tensors,{check:part.check,sel0:part.sel0||(outs.length?{k:outs[outs.length-1].k,idx:midIdx(outs[outs.length-1].T)}:null),
+    onSelect:st=>{chkEl.innerHTML=checkHTML(st);
+      const g=$("#gqa",host);if(g){const n=st.sel&&st.sel.idx&&st.sel.idx.n;g.querySelectorAll("div").forEach(d=>d.classList.toggle("on",n!==undefined&&+d.dataset.n===Math.floor(n)))}}});
+  if(!ctl.st.sel)chkEl.innerHTML=checkHTML(ctl.st);
+  $("#rnd",host).addEventListener("click",()=>{
+    const e=outs[outs.length-1]||part.tensors[part.tensors.length-1],T=e.T,idx={};
+    T.axes.forEach((a,i)=>{idx[a]=Math.floor(Math.random()*T.shape[i])});ctl.select(e.k,idx);
+  });
+}
+function renderGraph(host){
+  host.innerHTML=`<div class="ggrid"><div class="gcol"><div class="gscroll" id="gs">${graphSVG()}</div>
+    <div class="gkey"><span><i style="background:var(--k-in)"></i>input</span><span><i style="background:var(--k-norm)"></i>RMSNorm</span><span><i style="background:var(--k-lin)"></i>matrix multiply</span><span><i style="background:var(--k-re)"></i>reshape / RoPE</span><span><i style="background:var(--k-attn)"></i>attention</span><span><i style="background:var(--k-mlp)"></i>MLP</span><span><i style="background:var(--k-res)"></i>residual add</span><span><i style="background:var(--k-out)"></i>output</span></div>
+    <p class="muted" style="font-size:13px">Orange outline = the parents of the selected box. The long arrows on the left are the residual connections. Weights are not drawn as boxes: they are listed in the panel.</p></div>
+    <div class="gdetail" id="gd"></div></div>`;
+  const gs=$("#gs",host);
+  const sel=(id,user)=>{
+    const n=GBY[id];
+    gs.querySelectorAll(".gnode").forEach(g=>{g.classList.toggle("sel",g.dataset.id===id);g.classList.toggle("par",n.par.some(p=>p.id===g.dataset.id))});
+    gs.querySelectorAll("path.edge").forEach(p=>{p.classList.toggle("hi",p.dataset.to===id)});
+    showNode(id);
+    if(user&&window.matchMedia&&matchMedia("(max-width:900px)").matches)$("#gd",host).scrollIntoView({block:"start",behavior:"smooth"});
+  };
+  gs.addEventListener("click",e=>{const g=e.target.closest(".gnode");if(g)sel(g.dataset.id,true)});
+  gs.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){const g=e.target.closest(".gnode");if(g){e.preventDefault();sel(g.dataset.id,true)}}});
+  function showNode(id,weightKey){
+    ACTIVE.forEach(a=>a.destroy&&a.destroy());ACTIVE.length=0;
+    const n=GBY[id],gd=$("#gd",host),k=weightKey||id,T=R[k];
+    const chips=[...n.par.map(p=>`<button type="button" data-node="${p.id}">${p.id}</button>`),...(n.w||[]).map(w=>`<button type="button" class="w" data-w="${w}">${w}</button>`)].join("");
+    gd.innerHTML=`<div class="card"><div class="eyebrow">${weightKey?"weight of "+esc(n.t):"Tensor"}</div><h3>${esc(n.t)} <span class="mono muted" style="font-size:13px;font-weight:400">${weightKey?weightKey:id}</span></h3>
+      <div class="einsum">${colorize(weightKey?"learned numbers, layout "+T.axes.map(a=>a==="nd"?"(n d)":a).join(" "):n.ein)}</div>
+      <p>${weightKey?esc(T.desc):n.plain}</p>
+      ${n.par.length||(n.w||[]).length?`<div class="pchips"><span class="muted">Computed from:</span>${chips||"<span class='muted'>nothing (fixed grid)</span>"}</div>`:""}
+      ${weightKey?`<div class="pchips"><button type="button" data-node="${id}">Back to ${id}</button></div>`:""}
+      <div id="gv"></div>
+      <div class="check"><h3>Check one cell</h3><div class="row"><button class="btn primary small" type="button" id="gchk" ${hasChk(k)&&!weightKey?"":"disabled"}>Check one cell</button><button class="btn small" type="button" id="grnd" ${hasChk(k)&&!weightKey?"":"disabled"}>Pick a random cell</button></div><div id="gr"><p class="muted">${hasChk(k)&&!weightKey?"Select a cell, then press the button. The cell is recomputed from the parent tensors and compared with the stored value.":(weightKey?"A weight is a learned number. It is an input of the computation, so there is nothing to recompute.":(id==="ids"?"The ids come from the tokenizer. Nothing to recompute.":"No cell check for this box."))}</p></div></div></div>`;
+    gd.querySelectorAll("[data-node]").forEach(b=>b.addEventListener("click",()=>sel(b.dataset.node,true)));
+    gd.querySelectorAll("[data-w]").forEach(b=>b.addEventListener("click",()=>showNode(id,b.dataset.w)));
+    const gr=$("#gr",gd);
+    const ctl=mountViewer($("#gv",gd),[{k,T,label:weightKey?"weight":"",desc:T.desc}],{check:hasChk(k)&&!weightKey?(kk,i)=>CHK[kk](i):null,
+      sel0:{k,idx:(!weightKey&&n.sel)||midIdx(T)},onSelect:()=>{gr.innerHTML=`<p class="muted">Press "Check one cell" to recompute the selected cell.</p>`}});
+    const run=()=>{const st=ctl.st;if(!st.res)return;gr.innerHTML=checkHTML(st)};
+    const b=$("#gchk",gd);if(b){b.addEventListener("click",run);}
+    const r=$("#grnd",gd);if(r)r.addEventListener("click",()=>{const idx={};T.axes.forEach((a,i)=>{idx[a]=Math.floor(Math.random()*T.shape[i])});ctl.select(k,idx);run()});
+  }
+  sel("weights");
+}
+function renderBridge(host){
+  let tn=1088;
+  host.innerHTML=`<div class="card"><h3>Same graph, bigger sizes</h3>
+    <div class="facts">
+      <div class="fact"><b>Hidden size h</b>8 here, 1536 in Gemma</div>
+      <div class="fact"><b>Heads</b>4 query and 2 key/value here. Gemma: 8 query heads and 1 key/value head, so all 8 share it</div>
+      <div class="fact"><b>Head size d</b>16 here. Gemma: 256, or 512 in the global layers</div>
+      <div class="fact"><b>MLP width i</b>32 here. Gemma: 6144 (12,288 in the 20 layers that reuse keys and values)</div>
+      <div class="fact"><b>Layers</b>2 here. Gemma: 35</div>
+      <div class="fact"><b>Vocabulary v</b>151,936 here. Gemma: 262,144</div>
+    </div>
+    <div class="row"><label for="tN">Tokens in the text <span class="dim dim-t">t</span> for Gemma: </label><input id="tN" type="range" min="64" max="8192" step="64" value="1088" style="accent-color:var(--accent);width:180px"><output id="tO" class="mono">1088</output></div>
+    <div class="tblwrap"><table class="cmp" id="cmp"></table></div>
+    <h4>What Gemma 4 E2B adds on top of this graph</h4>
+    <ul style="margin:0;padding-left:20px;max-width:75ch">
+      <li><b>Multi-query attention.</b> One key/value head for 8 query heads: the K and V tensors are 8 times smaller than with 8 heads. In the last 20 layers Gemma reuses the K and V of an earlier layer.</li>
+      <li><b>GeGLU instead of SiLU.</b> The gate uses GELU (tanh form). The shape of the MLP is the same.</li>
+      <li><b>A different RMSNorm.</b> Gemma multiplies by (1 + w), where Qwen multiplies by w. The embedding is also multiplied by √1536 ≈ 39.2.</li>
+      <li><b>Sliding and global layers.</b> Sliding layers only look back 512 positions. Global layers look at everything and use head size 512.</li>
+      <li><b>Per-Layer Embedding (PLE).</b> Each token also gets a small 256-number vector for each of the 35 layers, which a layer adds to the residual stream. The table has 262,144 × 35 × 256 numbers, so OpenJev keeps it on the CPU.</li>
+      <li><b>OpenJev reads flags, not words.</b> There is no 262,144-word output layer. Instead a small head reads the hidden state at the flag tokens.</li>
+    </ul></div>
+    <div class="card"><div class="eyebrow">Prism mask lab</div><h3>Who may look at whom</h3>
+     <p class="muted">A small request with one question and two options. Row = the token that looks (query, <span class="dim dim-t">t</span>). Column = the token it looks at (key, <span class="dim dim-s">s</span>). A filled square means "allowed". This grid is the <span class="mono">mask</span> that you met in lesson 6: 0 where allowed, −∞ where not. Click a square for the reason.</p>
+     <div class="seg" role="group" aria-label="Mask mode"><button id="mPr" type="button" aria-pressed="true">Prism (OpenJev now)</button><button id="mIso" type="button" aria-pressed="false">Isolated flags (Prism-1 style)</button><button id="mCa" type="button" aria-pressed="false">Normal causal LLM</button></div>
+     <div class="labgrid"><div class="maskbox"><table class="mask" id="mask"></table></div>
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+       <div class="mchips"><span class="mchip" style="border-color:var(--d-v)">shared block</span><span class="mchip" style="border-color:var(--d-h)">option text</span><span class="mchip" style="border-color:var(--d-b)">flag (read by the head)</span></div>
+       <div class="explain" id="mexp">Click a square.</div>
+       <p class="note">Position ids (row under the tokens) are what RoPE uses. Both options start at the same position, so neither option is "first". Thus, the order of the options does not change the scores. The test <span class="mono">test_option_order_invariance</span> checks this. A normal causal LLM gives each option a different position, and option B can read option A.</p>
+      </div></div></div>`;
+  const cmp=$("#cmp",host);
+  const rows=GN.filter(n=>n.id!=="layer1_out"&&n.id!=="ids");
+  function paint(){
+    cmp.innerHTML=`<thead><tr><th>Tensor</th><th>Axes</th><th>Tiny Qwen3 (this course)</th><th>Gemma 4 E2B, t = ${fmtN(tn)}</th></tr></thead><tbody>`+
+     rows.map(n=>{const T=R[n.id];
+       let gs=gemShape(T,tn).map(fmtN).join(" × "),ts=T.shape.join(" × ");
+       if(n.id==="logits_top5"){gs=fmtN(GEM.v)+" (all words)";ts="5 shown of "+fmtN(CFG.vocab)}
+       return`<tr><td>${n.t}</td><td class="m">${colorize(T.axes.map(a=>a==="nd"?"(n d)":a==="kd"?"(k d)":a).join(" "))}</td><td class="m">${ts}</td><td class="m">${gs}</td></tr>`}).join("")+
+     `<tr><td colspan="4" class="muted">Look at <b>scores</b>: ${GEM.n} × ${fmtN(tn)} × ${fmtN(tn)} = ${fmtN(GEM.n*tn*tn)} numbers in each layer. It grows with t², which is why real kernels never store it whole.</td></tr></tbody>`;
+  }
+  paint();
+  $("#tN",host).addEventListener("input",e=>{tn=+e.target.value;$("#tO",host).value=tn;paint()});
+  renderMask(host);
+  const seg=(id)=>["mPr","mIso","mCa"].forEach(x=>$("#"+x,host).setAttribute("aria-pressed",String(x===id)));
+  $("#mPr",host).onclick=()=>{MODE="prism";seg("mPr");renderMask(host)};
+  $("#mIso",host).onclick=()=>{MODE="iso";seg("mIso");renderMask(host)};
+  $("#mCa",host).onclick=()=>{MODE="causal";seg("mCa");renderMask(host)};
+  $("#mask",host).addEventListener("click",e=>{const b=e.target.closest(".mcell");if(!b)return;selR=+b.dataset.r;selC=+b.dataset.c;renderMask(host)});
+}
+
+/* ---------- boot ---------- */
+function themeInit(){
+  const btn=$("#themeBtn"),order=["auto","light","dark"];let cur=0;
+  const apply=()=>{const t=order[cur];if(t==="auto")document.documentElement.removeAttribute("data-theme");else document.documentElement.setAttribute("data-theme",t);
+    btn.textContent="Theme: "+t;requestAnimationFrame(()=>ACTIVE.forEach(a=>a.redraw()))};
+  btn.addEventListener("click",()=>{cur=(cur+1)%3;apply()});
+  if(window.matchMedia)matchMedia("(prefers-color-scheme: dark)").addEventListener("change",()=>requestAnimationFrame(()=>ACTIVE.forEach(a=>a.redraw())));
+}
+function boot(){
+  $("#nav").addEventListener("click",e=>{const b=e.target.closest("button[data-i]");if(b)go(+b.dataset.i)});
+  $("#navBtn").addEventListener("click",()=>{const o=$("#nav").classList.toggle("open");$("#navBtn").setAttribute("aria-expanded",String(o))});
+  $("#main").addEventListener("click",e=>{
+    const g=e.target.closest("[data-go]");if(g){go(LI+(g.dataset.go==="next"?1:-1));return}
+    const p=e.target.closest("[data-p]");if(p){PI[LI]=+p.dataset.p;
+      $("#main").querySelectorAll("[data-p]").forEach(x=>x.setAttribute("aria-pressed",String(x===p)));renderPart($("#body"),LESSONS[LI].parts[PI[LI]])}
+  });
+  themeInit();
+  const m=/^#l(\d+)$/.exec(location.hash||"");
+  const q=/[?&]p=(\d+)/.exec(location.search||"");
+  const start=m?Math.max(0,Math.min(LESSONS.length-1,+m[1]-1)):0;
+  if(q)PI[start]=+q[1];
+  LI=start;DONE.add(LI);renderNav();renderLesson();
+  window.addEventListener("hashchange",()=>{const mm=/^#l(\d+)$/.exec(location.hash||"");if(mm&&+mm[1]-1!==LI)go(+mm[1]-1)});
+}
+if(typeof document!=="undefined"&&document.getElementById("app"))boot();
+if(typeof globalThis!=="undefined")globalThis.__course={CHK,R,DATA,GN,TOYS,toyChecks,LESSONS,V,hasChk};
+</script>
