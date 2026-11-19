@@ -78,6 +78,11 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
   so sm75 reports True and v8 ran Gemma in emulated bf16 (embeddings.pt is bf16). Bench fp16 + GradScaler vs bf16 on
   T4 (watch for Gemma fp16 overflow / skipped steps) before changing the default.
 
+- [ ] OJ-085 [P1] Compact PLE table: tokenize the whole train+val set once on CPU, collect the distinct token ids
+  (+ pad + template tokens), keep only those rows of embed_tokens_per_layer (est. 30-60k of 262,144 -> ~1.1 GB
+  fp16 vs 4.7 GB) and remap ids for the PLE lookup only. Exact: test that flag logits equal the full-table run.
+  Gives PLE-on-GPU speed with PLE-on-CPU memory. Serving keeps the full table (unknown ids -> full table).
+
 ## Done
 
 - [x] OJ-080 [P1] Diagnose near-constant predictions: in v8 the per-source val accuracy was identical at SFT 30, SFT 60
