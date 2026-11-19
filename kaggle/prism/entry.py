@@ -15,7 +15,7 @@ else:
     shutil.copytree(os.path.dirname(script[0]), work, dirs_exist_ok=True)
 data = os.path.dirname(glob.glob("/kaggle/input/**/banking77.train.jsonl", recursive=True)[0])
 subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "-U",
-                       "transformers>=5.17", "peft", "safetensors"])
+                       "transformers>=5.17", "peft", "safetensors", "tensorboard"])
 # The Kaggle image ships torchao 0.10; new peft rejects torchao < 0.16 at LoRA
 # injection. We do not use torchao, so remove it.
 subprocess.call([sys.executable, "-m", "pip", "uninstall", "-y", "-q", "torchao"])
@@ -43,7 +43,9 @@ run(["--algo", "grpo", "--init", "pf/sft/best", *pf, "--save-dir", "pf/grpo"])
 shutil.rmtree("pf")
 print("=== PREFLIGHT OK ===", flush=True)
 
-run(["--algo", "sft", "--steps", str(STEPS_SFT), "--lr", "1e-4", "--save-dir", "ckpt/sft"])
+run(["--algo", "sft", "--steps", str(STEPS_SFT), "--lr", "1e-4", "--save-dir", "ckpt/sft",
+     "--tb-dir", "/kaggle/working/out/tb/sft"])
 run(["--algo", "exact", "--reward", "brier", "--init", "ckpt/sft/best",
-     "--steps", str(STEPS_RL), "--lr", "2e-5", "--head-lr", "1e-4", "--save-dir", "ckpt/rl"])
+     "--steps", str(STEPS_RL), "--lr", "2e-5", "--head-lr", "1e-4", "--save-dir", "ckpt/rl",
+     "--tb-dir", "/kaggle/working/out/tb/rl"])
 shutil.copytree("ckpt", "/kaggle/working/out", dirs_exist_ok=True)

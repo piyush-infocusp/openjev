@@ -41,6 +41,7 @@ import random
 import time
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
@@ -80,6 +81,7 @@ def parse():
     ap.add_argument("--eval-every", type=int, default=250)
     ap.add_argument("--eval-max", type=int, default=1000)
     ap.add_argument("--save-dir", default="checkpoints/prism")
+    ap.add_argument("--tb-dir", default="", help="TensorBoard dir (default <save-dir>/tb)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--dtype", default="auto", choices=["auto", "fp32", "fp16", "bf16"])
     ap.add_argument("--grad-ckpt", action="store_true")
@@ -291,9 +293,11 @@ def save(model, tok, args, out_dir):
 def evaluate(model, tok, records, args, device):
     model.eval()
     per = {}
+    lens = []
     for i in range(0, len(records), args.bs):
         chunk = records[i:i + args.bs]
         b = prism_collate(tok, chunk, args.max_state_tokens).to(device)
+        lens += b.attention_mask.sum(-1).tolist()
         with autocast(device, model):
             logits = model.flag_logits(b)
         for (l, t, kind), src in zip(question_views(logits, b),
@@ -311,7 +315,19 @@ def evaluate(model, tok, records, args, device):
     from openjev.metrics import ece_from_conf
     return {"acc": round(sum(all_ok) / max(len(all_ok), 1), 4),
             "nll": round(sum(nll) / max(len(nll), 1), 4),
-            "ece": round(ece_from_conf(all_conf, all_ok), 4), "per_source": rows}
+            "ece": round(ece_from_conf(all_conf, all_ok), 4), "per_source": rows,
+            "seq_p95": round(float(np.percentile(lens, 95)), 1) if lens else 0.0,
+            "seq_max": int(max(lens)) if lens else 0}
+
+
+def make_writer(args):
+    """TensorBoard SummaryWriter, or None if unavailable. Never raises."""
+    try:
+        from torch.utils.tensorboard import SummaryWriter
+        return SummaryWriter(args.tb_dir or str(Path(args.save_dir) / "tb"))
+    except Exception as e:
+        print(f"warning: TensorBoard logging disabled ({type(e).__name__}: {e})", flush=True)
+        return None
 
 
 def autocast(device, model):
@@ -360,6 +376,16 @@ def main():
                     return model.flag_logits(b)
             return model.flag_logits(b)  # full fine-tune: KL vs self (no-op), use LoRA instead
 
+    tb = make_writer(args)
+
+    def tb_log(fn):
+        if tb is None:
+            return
+        try:
+            fn()
+        except Exception as e:
+            print(f"warning: TensorBoard logging failed ({type(e).__name__}: {e})", flush=True)
+
     log = Path(args.save_dir) / "log.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     best, t0, bad = float("inf"), time.time(), 0
@@ -386,7 +412,7 @@ def main():
                     loss, stats = exact_pg_loss(logits, ref_logits(b), b, args)
             scaler.scale(loss / args.grad_accum).backward()
         scaler.unscale_(opt)
-        torch.nn.utils.clip_grad_norm_([p for g in opt.param_groups for p in g["params"]], 1.0)
+        gnorm = torch.nn.utils.clip_grad_norm_([p for g in opt.param_groups for p in g["params"]], 1.0)
         scaler.step(opt)
         scaler.update()
         opt.zero_grad(set_to_none=True)
@@ -399,15 +425,35 @@ def main():
                              "Likely fp16 overflow; try --dtype fp32 or a bf16 GPU.")
         if step % 10 == 0:
             print(json.dumps({"step": step, "sec": round(time.time() - t0), **stats}), flush=True)
+
+            def _log_train():
+                for k, v in stats.items():
+                    tb.add_scalar(f"train/{k}", v, step)
+                for name, g in zip(("lr_body", "lr_head"), opt.param_groups):
+                    tb.add_scalar(f"train/{name}", g["lr"], step)
+                tb.add_scalar("train/grad_norm", float(gnorm), step)
+                if device == "cuda":
+                    tb.add_scalar("sys/peak_mem_gb", torch.cuda.max_memory_allocated() / 2**30, step)
+                tb.add_scalar("data/seq_len", b.input_ids.shape[1], step)
+            tb_log(_log_train)
         if (step + 1) % args.eval_every == 0 or step + 1 == args.steps:
             m = evaluate(model, tok, val, args, device)
             print(json.dumps({"step": step + 1, "val": m}), flush=True)
             with open(log, "a") as f:
                 f.write(json.dumps({"step": step + 1, **m}) + "\n")
+
+            def _log_val():
+                for k in ("acc", "nll", "ece"):
+                    tb.add_scalar(f"val/{k}", m[k], step + 1)
+                for src, v in m["per_source"].items():
+                    tb.add_scalar(f"val_source/{src}", v, step + 1)
+                tb.flush()
+            tb_log(_log_val)
             if m["nll"] < best:
                 best = m["nll"]
                 save(model, tok, args, Path(args.save_dir) / "best")
     save(model, tok, args, Path(args.save_dir) / "last")
+    tb_log(lambda: tb.close())
 
 
 if __name__ == "__main__":
