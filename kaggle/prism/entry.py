@@ -25,27 +25,36 @@ subprocess.check_call([sys.executable, "-c",
                        "print('env ok', torch.__version__, transformers.__version__, peft.__version__)"])
 os.chdir(work)
 
-STEPS_SFT = int(os.environ.get("STEPS_SFT", 2000))
-STEPS_RL = int(os.environ.get("STEPS_RL", 500))
+# PROFILE "short": a ~1.5 h end-to-end check (SFT then RL) with fast evals.
+# PROFILE "full": the long run with a preflight first.
+PROFILE = os.environ.get("PROFILE", "short")
+if PROFILE == "short":
+    STEPS_SFT, STEPS_RL, ACCUM, EVAL_EVERY, EVAL_MAX = 60, 20, 2, 30, 200
+else:
+    STEPS_SFT, STEPS_RL, ACCUM, EVAL_EVERY, EVAL_MAX = 2000, 500, 8, 250, 800
 common = ["--model", "google/gemma-4-E2B-it", "--train", f"{data}/*.train.jsonl",
-          "--val", f"{data}/*.val.jsonl", "--bs", "4", "--grad-accum", "8",
-          "--max-state-tokens", "1024", "--grad-ckpt", "--eval-every", "250",
-          "--eval-max", "800"]
+          "--val", f"{data}/*.val.jsonl", "--bs", "4", "--grad-accum", str(ACCUM),
+          "--max-state-tokens", "1024", "--grad-ckpt", "--eval-every", str(EVAL_EVERY),
+          "--eval-max", str(EVAL_MAX)]
 run = lambda extra: subprocess.check_call([sys.executable, "train_prism.py", *common, *extra])
+OUT = "/kaggle/working/out"
 
-# Preflight: every code path (load, SFT step, eval, save, RL from checkpoint,
-# GRPO) on the real model, in a few minutes, before the long run.
-print("=== PREFLIGHT ===", flush=True)
-pf = ["--steps", "2", "--grad-accum", "1", "--eval-every", "2", "--eval-max", "16"]
-run(["--algo", "sft", *pf, "--save-dir", "pf/sft"])
-run(["--algo", "exact", "--reward", "brier", "--init", "pf/sft/best", *pf, "--save-dir", "pf/rl"])
-run(["--algo", "grpo", "--init", "pf/sft/best", *pf, "--save-dir", "pf/grpo"])
-shutil.rmtree("pf")
-print("=== PREFLIGHT OK ===", flush=True)
+if PROFILE != "short":
+    # Preflight: every code path on the real model before the long run.
+    print("=== PREFLIGHT ===", flush=True)
+    pf = ["--steps", "2", "--grad-accum", "1", "--eval-every", "2", "--eval-max", "16"]
+    run(["--algo", "sft", *pf, "--save-dir", "pf/sft"])
+    run(["--algo", "exact", "--reward", "brier", "--init", "pf/sft/best", *pf, "--save-dir", "pf/rl"])
+    run(["--algo", "grpo", "--init", "pf/sft/best", *pf, "--save-dir", "pf/grpo"])
+    shutil.rmtree("pf")
+    print("=== PREFLIGHT OK ===", flush=True)
 
+print(f"=== PROFILE {PROFILE}: SFT {STEPS_SFT} steps, RL {STEPS_RL} steps ===", flush=True)
 run(["--algo", "sft", "--steps", str(STEPS_SFT), "--lr", "1e-4", "--save-dir", "ckpt/sft",
-     "--tb-dir", "/kaggle/working/out/tb/sft"])
+     "--tb-dir", f"{OUT}/tb/sft"])
+shutil.copytree("ckpt/sft", f"{OUT}/sft", dirs_exist_ok=True)   # keep SFT even if RL fails
 run(["--algo", "exact", "--reward", "brier", "--init", "ckpt/sft/best",
      "--steps", str(STEPS_RL), "--lr", "2e-5", "--head-lr", "1e-4", "--save-dir", "ckpt/rl",
-     "--tb-dir", "/kaggle/working/out/tb/rl"])
-shutil.copytree("ckpt", "/kaggle/working/out", dirs_exist_ok=True)
+     "--tb-dir", f"{OUT}/tb/rl"])
+shutil.copytree("ckpt/rl", f"{OUT}/rl", dirs_exist_ok=True)
+print("=== DONE ===", flush=True)
