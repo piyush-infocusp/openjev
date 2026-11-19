@@ -41,6 +41,8 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
   softmax over options), `--template natural`, `--mask causal`. Report pass@1 / pass@k / ECE per source on val.
 - [ ] OJ-064 [P2] Per-source curriculum (tokenbender rule): pass@k ~ 0 -> SFT; 0 < pass@k < 1 -> direct RL;
   near 1 -> calibration only. A/B: direct RL on "middle" sources vs SFT->RL, same val set. Needs OJ-063.
+  Also ablate direct exact-PG from the random head at equal compute (avataRL: dense partial-credit reward
+  makes RL-from-zero work; see docs/research/sft-vs-rl/notes/tokenbender.md). The rule itself is unverified.
 - [ ] OJ-065 [P2] Flag-mode A/B: `--flag-mode isolated|siblings` (Prism-1 vs Sarvam). Add option-order flip-rate metric.
 - [ ] OJ-066 [P3] Calibration baselines in eval.py: frozen-backbone + head, SFT + temperature/Platt scaling;
   report 15-bin ECE, Brier, selective accuracy at 50% coverage.

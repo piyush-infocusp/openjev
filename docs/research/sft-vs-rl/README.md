@@ -17,6 +17,7 @@ Per-paper notes in `notes/`, PDFs (plus `.highlighted.pdf`) in `papers/`. Papers
 | EXTC (2605.29076) | 4B | SFT distill then GRPO | Rollout homogeneity (zero-advantage groups) in classification RL; SFT+RL > SFT | Favors exact PG / filtering |
 | ChestPheNoT (2609.31629) | 0.5/1.5/3B | SFT vs SFT+GRPO | RL ~0 in-distribution, small OOD gains, no clear size trend (n=1) | Expect small gains; evaluate OOD |
 | Reward fns for calibration RL (2607.04332) | 3B, 4B, Gemma 4 E2B | Dr. GRPO/DAPO, Brier/log/overconfidence rewards | Badly designed calibration rewards cause hacking (answer wrong, confidence 0) | Closest to us; copy non-hackable reward form |
+| tokenbender (X/GitHub/blog, avataRL) | 30M-250M | RL from random weights, dense reward | Pure RL from scratch possible with dense partial reward + critic; sparse reward makes it very expensive; remembered 'SFT if cannot do task, RL if sometimes succeeds' rule UNVERIFIED | Weak/indirect; supports short SFT then RL, direct RL as ablation (notes/tokenbender.md) |
 
 ## Synthesis (~2B decision model)
 1. Recommend SFT then RL, with a short SFT. (moderate confidence)
