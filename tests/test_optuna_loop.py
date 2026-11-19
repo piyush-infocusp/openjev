@@ -95,7 +95,8 @@ def test_report_importances_and_guard(tmp_path):
     space = ol.load_space(ROOT / "tools" / "search_space.yaml")
     impl = ol.implemented(space)
     assert {d["name"] for d in impl} == {"bs", "grad_ckpt", "max_state_tokens", "torch_threads",
-                                         "sdpa_backend", "ple_cpu", "attn_backend", "profile"}
+                                         "sdpa_backend", "ple_cpu", "attn_backend", "profile",
+                                         "dtype"}
     assert [d["name"] for d in impl if not d["sample"]] == ["profile"]
     assert all(not d["implemented"] for d in space if d["name"] in ("quant", "ddp", "packing"))
     trials = tmp_path / "t.json"
@@ -131,15 +132,17 @@ def test_round2_enqueue_profile_and_backends(tmp_path, tok):
                                    tmp_path / "results.json", tmp_path / "EXPERIMENTS.md")
     g = ["--db", str(db)]
     run(LOOP + g + ["propose", "--n", "0", "--out", str(trials),
-                    "--enqueue-json", '{"bs": 2, "attn_backend": "chunked_math", "profile": 1}',
-                    "--enqueue-json", '[{"bs": 2, "attn_backend": "flex"}, '
-                                      '{"bs": 2, "attn_backend": "sdpa_bool"}]'])
+                    "--enqueue-json", '{"bs": 2, "attn_backend": "chunked_math", "profile": 1, '
+                                      '"dtype": "fp32"}',
+                    "--enqueue-json", '[{"bs": 2, "attn_backend": "flex", "dtype": "fp32"}, '
+                                      '{"bs": 2, "attn_backend": "sdpa_bool", "dtype": "fp32"}]'])
     proposed = json.loads(trials.read_text())
     # trial 0 is the enqueued baseline, then the three exact configs in order
     assert [t["params"].get("attn_backend") for t in proposed] == [
         "sdpa_default", "chunked_math", "flex", "sdpa_bool"]
     assert proposed[1]["params"]["profile"] == 1 and "profile" not in proposed[2]["params"]
     assert proposed[1]["params"]["ple_cpu"] == 0 and proposed[1]["params"]["grad_ckpt"] == "on"
+    assert proposed[0]["params"]["dtype"] == "fp16" and proposed[1]["params"]["dtype"] == "fp32"
     proposed = proposed[1:]                 # the baseline is not needed here: it fails as "no result"
     trials.write_text(json.dumps(proposed))
     run([sys.executable, str(ROOT / "bench_trials.py"), "--trials", str(trials),
@@ -171,7 +174,7 @@ def test_enqueue_json_is_validated(tmp_path):
     import optuna_loop as ol
     impl = ol.implemented(ol.load_space(ROOT / "tools" / "search_space.yaml"))
     full = ol.parse_enqueue(['{"bs": 8}'], impl)[0]
-    assert full["bs"] == 8 and full["ple_cpu"] == 0 and full["profile"] == 0
+    assert full["bs"] == 8 and full["ple_cpu"] == 0 and full["profile"] == 0 and full["dtype"] == "fp16"
     with pytest.raises(SystemExit):
         ol.parse_enqueue(['{"nope": 1}'], impl)
     with pytest.raises(SystemExit):
@@ -185,7 +188,7 @@ def test_round1_study_still_works(tmp_path):
     sys.path.insert(0, str(ROOT / "tools"))
     import optuna_loop as ol
     space = yaml.safe_load((ROOT / "tools" / "search_space.yaml").read_text())
-    old = [d for d in space["dimensions"] if d["name"] not in ("attn_backend", "profile")]
+    old = [d for d in space["dimensions"] if d["name"] not in ("attn_backend", "profile", "dtype")]
     for d in old:
         if d["name"] == "ple_cpu":
             d["default"] = 1
@@ -206,12 +209,43 @@ def test_round1_study_still_works(tmp_path):
     ol.main(["--db", str(db), "propose", "--n", "3", "--out", str(t2),
              "--enqueue-json", '{"profile": 1}'])
     new = json.loads(t2.read_text())
-    assert [t["trial_number"] for t in new] == [3, 4, 5, 6]   # baseline (trial 0) not re-enqueued
-    assert all("attn_backend" in t["params"] for t in new) and new[0]["params"]["profile"] == 1
+    # round 2 gets its own baseline first (round 1's ran under the old mask/defaults),
+    # then the enqueued config, then TPE; the baseline counts toward --n
+    assert [t["trial_number"] for t in new] == [3, 4, 5, 6]
+    assert new[0]["params"]["ple_cpu"] == 0 and new[0]["params"]["dtype"] == "fp16"
+    assert all("attn_backend" in t["params"] for t in new) and new[1]["params"]["profile"] == 1
     fake(t2, tmp_path / "r2.json")
+    r2 = json.loads((tmp_path / "r2.json").read_text())
+    r2["results"][0]["loss_guard"] = 1.0     # round-2 baseline drop 1.0 -> need >= 0.5
+    # trial 5 drops 0.4: enough against round 1's baseline (0.4), not against round 2's
+    (tmp_path / "r2.json").write_text(json.dumps(r2))
     ol.main(["--db", str(db), "ingest", str(tmp_path / "r2.json")])
+    study = optuna.load_study(study_name=ol.STUDY_NAME, storage=f"sqlite:///{db}")
+    by = {t.number: t for t in study.trials}
+    assert by[3].user_attrs["is_baseline"] and by[3].user_attrs["round"] == 2
+    assert by[5].state == optuna.trial.TrialState.PRUNED and "baseline 1.000" in by[5].user_attrs["reason"]
     out = tmp_path / "E.md"
+    out.write_text("old\n<!-- manual: kept by report -->\n\n## My notes\nkeep me\n")
     ol.main(["--db", str(db), "report", "--out", str(out)])
     text = out.read_text()
-    assert " attn_backend | profile | samples/s |" in text
-    assert "| 0 | complete (base) |" in text and "| 6 |" in text and "## Profiles" not in text
+    assert "| ple_cpu | dtype | attn_backend | profile | samples/s |" in text
+    assert "| 0 | complete (base r1) |" in text and "| 3 | complete (base r2) |" in text
+    assert "## Profiles" not in text and text.rstrip().endswith("keep me") and text.startswith("# OpenJev")
+
+
+def test_auto_dtype_needs_native_bf16(monkeypatch):
+    """OJ-081: --dtype auto must not pick emulated bf16 on a T4 (sm75)."""
+    sys.path.insert(0, str(ROOT))
+    import train_prism as tp
+    import bench_trials as bt
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda *a, **k: True)  # emulation counts
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda *a, **k: (7, 5))
+    assert tp.auto_dtype("cuda") == torch.float16
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda *a, **k: (8, 0))
+    assert tp.auto_dtype("cuda") == torch.bfloat16
+    assert tp.auto_dtype("cpu") == torch.float32
+    targs = tp.parse([])
+    assert bt.build_args(targs, {"dtype": "bf16_emulated", "ple_cpu": 0}).dtype == "bf16"
+    assert bt.build_args(targs, {"dtype": "fp16"}).dtype == "fp16"
+    with pytest.raises(ValueError):
+        bt.build_args(targs, {"dtype": "int8"})

@@ -49,8 +49,12 @@ class Unsupported(RuntimeError):
 # ---------------------------------------------------------------- attention functions
 
 def _chunk_attn(q, k, v, mask, scaling, softcap, dropout, training):
-    """q (B, Hkv, G, c, D), k/v (B, Hkv, 1, S, D), mask (B, 1|Hkv, 1|G, c, S)."""
-    s = torch.matmul(q, k.transpose(-1, -2)) * scaling
+    """q (B, Hkv, G, c, D), k/v (B, Hkv, S, D), mask (B, 1|Hkv, 1|G, c, S).
+    The G query heads that share a kv head are folded into the rows of one GEMM, so
+    K/V are never repeated (repeat_kv would copy them G times)."""
+    B, Hkv, G, c, D = q.shape
+    s = torch.matmul(q.reshape(B, Hkv, G * c, D), k.transpose(-1, -2)) * scaling
+    s = s.view(B, Hkv, G, c, -1)
     if softcap is not None:
         s = torch.tanh(s / softcap) * softcap
     if mask is not None:
@@ -58,7 +62,7 @@ def _chunk_attn(q, k, v, mask, scaling, softcap, dropout, training):
     p = F.softmax(s, dim=-1, dtype=torch.float32).to(q.dtype)
     if dropout:
         p = F.dropout(p, p=dropout, training=training)
-    return torch.matmul(p, v)
+    return torch.matmul(p.view(B, Hkv, G * c, -1), v).view(B, Hkv, G, c, -1)
 
 
 def _group_mask(mask, B, Hkv, G, T, S):
@@ -79,7 +83,7 @@ def chunked_attention_forward(module, query, key, value, attention_mask, dropout
         Hkv, S = key.shape[1], key.shape[2]
         G = H // Hkv
         q = query.reshape(B, Hkv, G, T, D)            # head h -> kv head h // G (repeat_kv order)
-        k, v = key[:, :, None], value[:, :, None]
+        k, v = key, value
         m = _group_mask(attention_mask, B, Hkv, G, T, S)
         grad = torch.is_grad_enabled() and (query.requires_grad or key.requires_grad
                                             or value.requires_grad)
@@ -110,7 +114,9 @@ def _flex_fn(device_type):
         for name in ("cache_size_limit", "recompile_limit"):   # one graph per (T, bs, head_dim)
             if hasattr(dynamo.config, name):
                 setattr(dynamo.config, name, max(getattr(dynamo.config, name), 64))
-        _flex["compiled"] = torch.compile(flex_attention, dynamic=False)
+        # Default dynamic handling (as transformers does): after the first new T it
+        # compiles a dynamic-shape graph instead of one graph per padded length.
+        _flex["compiled"] = torch.compile(flex_attention)
     return _flex["compiled"]
 
 
@@ -269,6 +275,7 @@ def sdpa_eligibility(model, device: str, dtype, T: int = 128) -> dict:
                                          can_use_flash_attention)
     except Exception as e:
         return {"error": f"{type(e).__name__}: {e}"[:200]}
+    import warnings
     checks = {"flash": can_use_flash_attention, "efficient": can_use_efficient_attention}
     try:
         from torch.backends.cuda import can_use_cudnn_attention
@@ -295,7 +302,10 @@ def sdpa_eligibility(model, device: str, dtype, T: int = 128) -> dict:
                         p = SDPAParams(q, k, k, m, 0.0, False, False)
                     except TypeError:
                         p = SDPAParams(q, k, k, m, 0.0, False)
-                    res[kn] = bool(fn(p, False))
+                    with warnings.catch_warnings(record=True) as w:
+                        warnings.simplefilter("always")
+                        ok = bool(fn(p, True))            # debug=True warns the reason
+                    res[kn] = True if ok else ("no: " + str(w[0].message)[:160] if w else False)
                 except Exception as e:
                     res[kn] = f"{type(e).__name__}"[:40]
             row[mk] = res

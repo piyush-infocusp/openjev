@@ -201,6 +201,17 @@ def grpo_loss(logits, ref_logits, batch, samples, args):
 
 # ---------------------------------------------------------------- model
 
+def auto_dtype(device: str) -> torch.dtype:
+    """--dtype auto: bf16 only where the GPU has native bf16 (compute capability >= 8.0).
+    torch.cuda.is_bf16_supported() also counts EMULATED bf16 by default
+    (including_emulation=True), so on a T4 (sm75) it picked slow emulated bf16 (OJ-081).
+    T4 gets fp16 (+ GradScaler); CPU gets fp32."""
+    if device != "cuda":
+        return torch.float32
+    major, _minor = torch.cuda.get_device_capability()
+    return torch.bfloat16 if major >= 8 else torch.float16
+
+
 def build(args, device, base: str | None = None):
     """base: load this backbone instead of the one named in --init's
     prism_config.json (tools/diag_predictions.py --model)."""
@@ -208,10 +219,7 @@ def build(args, device, base: str | None = None):
 
     dtype = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}.get(args.dtype)
     if dtype is None:
-        if device == "cuda":
-            dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-        else:
-            dtype = torch.float32
+        dtype = auto_dtype(device)
     src = args.init or args.model
     tok = AutoTokenizer.from_pretrained(src)
     base_name = args.model

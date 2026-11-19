@@ -1,7 +1,7 @@
 """Run a batch of Optuna speed trials (from tools/optuna_loop.py propose) in one process.
 
 Loading Gemma 4 E2B on Kaggle takes ~5 min, so the model is loaded once per group of
-trials that share the same `requires_reload` params (for example ple_cpu). Each trial:
+trials that share the same `requires_reload` params (ple_cpu, dtype). Each trial:
 
   1. restores the start weights (LoRA, flag head, template delta), the data stream
      position and the seed, and builds a fresh optimizer, so all trials start equal;
@@ -57,7 +57,10 @@ from openjev.prism import prism_collate
 # dimension marked `implemented: true` without code here never gives fake numbers.
 TRIAL_PARAMS = {"bs", "grad_ckpt", "max_state_tokens", "torch_threads", "sdpa_backend",
                 "attn_backend", "profile"}
-RELOAD_PARAMS = {"ple_cpu"}
+RELOAD_PARAMS = {"ple_cpu", "dtype"}
+# yaml dtype choice -> train_prism --dtype. "bf16_emulated" is what --dtype auto picked on
+# T4 before OJ-081 (bf16 without native support on sm75).
+DTYPES = {"fp16": "fp16", "bf16_emulated": "bf16", "fp32": "fp32"}
 
 
 def parse(argv=None):
@@ -87,6 +90,10 @@ def build_args(targs, reload_params: dict):
     for k, v in reload_params.items():
         if k == "ple_cpu":
             a.ple_cpu = int(v)
+        elif k == "dtype":
+            if v not in DTYPES:
+                raise ValueError(f"dtype {v!r} not in {sorted(DTYPES)}")
+            a.dtype = DTYPES[v]
         else:
             raise ValueError(f"reload param {k!r} has no handler in bench_trials.py")
     return a
@@ -245,6 +252,18 @@ def run_profile(step, device: str, steps: int) -> dict:
     return summarize_profile(prof.key_averages(), wall, steps)
 
 
+def dynamo_graphs():
+    """Graphs torch.compile has built so far (None if dynamo is not loaded)."""
+    import sys
+    if "torch._dynamo" not in sys.modules:
+        return None
+    try:
+        from torch._dynamo.utils import counters
+        return int(counters["stats"]["unique_graphs"])
+    except Exception:
+        return None
+
+
 def free(device):
     gc.collect()
     if device == "cuda":
@@ -320,6 +339,7 @@ def _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, devic
     loss_guard = probe_loss(model, tok, probe, targs, device)
     if device == "cuda":
         torch.cuda.synchronize()
+    graphs0 = dynamo_graphs()
     t0 = time.perf_counter()
     steps = 0
     while True:
@@ -337,7 +357,11 @@ def _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, devic
         scale["value"] = scaler.get_scale()
     nan = not all(math.isfinite(x) for x in train + [loss_start, loss_guard, loss_end])
     k = max(1, min(3, len(train) // 2))
-    extra = {"attn_backend": attn, "warmup_s": warmup_s}
+    extra = {"attn_backend": attn, "warmup_s": warmup_s, "dtype": str(dtype).replace("torch.", "")}
+    if graphs0 is not None:
+        # > 0: torch.compile (flex) built new graphs inside the timed loop, so this
+        # trial's samples/s includes compile time.
+        extra["graphs_in_timed_loop"] = dynamo_graphs() - graphs0
     if profile:
         # After loss_end and timing: the profiled steps change nothing that is measured.
         ab.set_attn_backend(model, attn, chunk=own.attn_chunk, label=True)

@@ -24,6 +24,11 @@
 # a default or adding a dimension is fine (old trials just lack the new param). The
 # baseline (trial 0) keeps the defaults it was run with.
 
+# Round of the study. Each round gets its own baseline trial (these defaults), and the
+# quality guard uses only the current round's baseline. Round 2: OJ-080 changed the Prism
+# mask and the defaults changed (ple_cpu 0, dtype fp16), so round 1's baseline is stale.
+round: 2
+
 dimensions:
   - name: bs
     type: categorical
@@ -83,6 +88,19 @@ dimensions:
       Per-Layer Embedding table on CPU (saves 4.7 GB on E2B) vs on GPU (no host->device copy
       per batch). Gemma 4 config; train_prism.place(). Round 1: 0 was +23% samples/s, so it
       is the default from round 2 (the round-1 baseline trial 0 ran with 1).
+
+  - name: dtype
+    type: categorical
+    choices: [fp16, bf16_emulated, fp32]
+    default: fp16
+    requires_reload: true
+    implemented: true
+    idea: >-
+      OJ-081. Base weight dtype. --dtype auto picked bf16 on T4 because
+      torch.cuda.is_bf16_supported() counts emulated bf16 (sm75 has no native bf16), so
+      round 1 likely ran EMULATED bf16. fp16 (+ GradScaler, skipped steps recorded) is the
+      round-2 default; bf16_emulated reproduces round 1; fp32 for reference.
+      PyTorch AMP docs.
 
   - name: attn_backend
     type: categorical

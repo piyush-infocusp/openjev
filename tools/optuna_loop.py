@@ -21,6 +21,11 @@ loss_guard and loss_end must be finite, and the guard drop must be at least
     baseline_drop - max(guard_abs, guard_rel * |baseline_drop|).
 loss_end (after the timed loop) is only informational.
 
+Rounds: the yaml has `round: N`. Each round gets its own baseline trial (the yaml
+defaults, enqueued first by propose), and the guard and the "vs base" column only use
+the baseline of the current round (round 1's baseline ran under the old OJ-080 mask
+and other defaults). Trials and baselines without a round attr are round 1.
+
 Dimensions with `sample: false` in the yaml (profile) are never drawn by TPE: trials use
 the default unless an --enqueue-json config sets them. profile=1 trials still report
 samples/s as their objective; their profiler table is listed under "Profiles".
@@ -36,13 +41,13 @@ from pathlib import Path
 
 import optuna
 import yaml
-import warnings
 from optuna.distributions import CategoricalDistribution, FloatDistribution, IntDistribution
 from optuna.trial import TrialState
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE_S_PER_SAMPLE = 4.5
 STUDY_NAME = "openjev-speed"
+MANUAL_MARKER = "<!-- manual: kept by report -->"
 
 
 # ---------------------------------------------------------------- search space
@@ -61,6 +66,14 @@ def load_space(path) -> list[dict]:
             raise ValueError(f"{d['name']}: default {d['default']!r} not in choices {d['choices']}")
         d.setdefault("sample", True)
     return dims
+
+
+def load_round(path) -> int:
+    return int(yaml.safe_load(Path(path).read_text()).get("round", 1))
+
+
+def trial_round(t) -> int:
+    return int(t.user_attrs.get("round", 1))
 
 
 def distribution(d: dict):
@@ -115,12 +128,10 @@ def open_study(db: Path, seed: int) -> optuna.Study:
         n = len(optuna.load_study(study_name=STUDY_NAME, storage=storage).trials)
     except KeyError:
         pass
-    warnings.filterwarnings("ignore", category=optuna.exceptions.ExperimentalWarning)
-    # group=True: round-2 trials have params (attn_backend) that round-1 trials lack;
-    # grouped multivariate TPE models each co-occurring param set jointly instead of
-    # dropping the new params to independent sampling.
-    sampler = optuna.samplers.TPESampler(multivariate=True, group=True, constant_liar=True,
-                                         seed=seed + n)
+    # Params added in a later round (attn_backend, dtype) are missing from older trials,
+    # so multivariate TPE leaves them out of its joint model and samples them on their
+    # own; enqueue the interactions that matter (--enqueue-json) instead.
+    sampler = optuna.samplers.TPESampler(multivariate=True, constant_liar=True, seed=seed + n)
     return optuna.create_study(study_name=STUDY_NAME, storage=storage, direction="maximize",
                                sampler=sampler, load_if_exists=True)
 
@@ -157,18 +168,22 @@ def cmd_propose(a):
     reload_keys = [d["name"] for d in impl if d["requires_reload"]]
     # Trial 0 is the baseline. Re-enqueue it if every baseline so far failed or was abandoned.
     alive = (TrialState.COMPLETE, TrialState.RUNNING, TrialState.WAITING)
-    need_base = not any(t.user_attrs.get("is_baseline") and t.state in alive for t in study.trials)
+    rnd = load_round(a.space)
+    need_base = not any(t.user_attrs.get("is_baseline") and t.state in alive
+                        and trial_round(t) == rnd for t in study.trials)
     if need_base:
         study.enqueue_trial({n: v for n, v in defaults.items() if n in sampled},
-                            user_attrs={"is_baseline": True})
+                            user_attrs={"is_baseline": True, "round": rnd})
     for cfg in queued:   # a sample: false dim at its default stays out of the Optuna params
         study.enqueue_trial({k: v for k, v in cfg.items() if k in sampled or v != defaults[k]},
-                            user_attrs={"enqueued": True})
+                            user_attrs={"enqueued": True, "round": rnd})
     out = []
     # The baseline (when it is enqueued) counts toward --n; the --enqueue-json configs do not.
     for _ in range(max(a.n, int(need_base)) + len(queued)):
         trial = study.ask()
         fixed = getattr(trial, "_fixed_params", {}) or {}
+        if "round" not in trial.user_attrs:
+            trial.set_user_attr("round", rnd)
         params = {}
         for name, dist in dists.items():
             if name in sampled or name in fixed:
@@ -198,7 +213,7 @@ ATTRS = ("samples_per_sec", "tokens_per_sec", "padded_tokens_per_sec", "pad_frac
          "loss_guard", "guard_steps", "loss_end", "train_loss_first", "train_loss_last",
          "scale_start", "scale_end", "skipped_steps", "n_gpu", "gpu_name", "status",
          "error", "group_load_s", "attn_backend", "warmup_s", "is_profile", "profile",
-         "sdpa_kernels")
+         "sdpa_kernels", "graphs_in_timed_loop", "dtype")
 PRUNE_STATUS = {"oom", "nan", "unsupported"}
 
 
@@ -211,9 +226,11 @@ def guard_loss(r: dict):
     return r.get("loss_guard", r.get("loss_end"))
 
 
-def baseline_drop(study, results):
-    """Guard-loss drop of the baseline: from this results file first, else the study."""
-    base_nums = {t.number for t in study.get_trials(deepcopy=False) if t.user_attrs.get("is_baseline")}
+def baseline_drop(study, results, rnd: int = 1):
+    """Guard-loss drop of this round's baseline: from this results file first, else the
+    study. Baselines of earlier rounds are never used (other mask / defaults)."""
+    base_nums = {t.number for t in study.get_trials(deepcopy=False)
+                 if t.user_attrs.get("is_baseline") and trial_round(t) == rnd}
     for r in results:
         if r.get("trial_number") in base_nums and r.get("status") == "ok" \
                 and finite(r.get("loss_start")) and finite(guard_loss(r)):
@@ -231,7 +248,9 @@ def cmd_ingest(a):
     raw = json.loads(Path(a.results).read_text())
     results = raw["results"] if isinstance(raw, dict) else raw
     meta = raw.get("meta", {}) if isinstance(raw, dict) else {}
-    base = baseline_drop(study, results)
+    base = baseline_drop(study, results, load_round(a.space))
+    if base is None:
+        print("warning: no baseline of this round in the results or the study: quality guard off")
     told = set()
     for r in sorted(results, key=lambda r: r["trial_number"]):
         n = r["trial_number"]
@@ -307,6 +326,26 @@ def pct(x):
     return "" if x is None else f"{100 * x:.1f}%"
 
 
+def kernel_section(trials) -> list[str]:
+    """'## SDPA kernel eligibility' from the newest trial that recorded it."""
+    t = next((t for t in reversed(trials) if isinstance(t.user_attrs.get("sdpa_kernels"), dict)
+              and t.user_attrs["sdpa_kernels"]), None)
+    if t is None:
+        return []
+    k = t.user_attrs["sdpa_kernels"]
+    L = ["## SDPA kernel eligibility", "",
+         f"From trial {t.number} ({t.user_attrs.get('gpu_name') or '?'}): can each SDPA kernel take "
+         "our case (per head dim, boolean vs additive float mask)? `no: ...` is the reason torch gives.", ""]
+    if "error" in k:
+        return L + [f"Not available: {k['error']}", ""]
+    L += ["| head dim | mask | kernel | eligible |", "|---|---|---|---|"]
+    for dim, row in k.items():
+        for mask, res in row.items():
+            for kern, ok in res.items():
+                L.append(f"| {dim} | {mask} | {kern} | {str(ok).replace('|', '/')} |")
+    return L + [""]
+
+
 def profile_section(trials) -> list[str]:
     """'## Profiles': the profiler table of every profile=1 trial."""
     prof = [t for t in trials if t.user_attrs.get("is_profile") and t.user_attrs.get("profile")]
@@ -347,7 +386,8 @@ def cmd_report(a):
     names = [d["name"] for d in dims if any(d["name"] in t.params for t in trials)]
     names += sorted({k for t in trials for k in t.params} - set(names))
     complete = [t for t in trials if t.state == TrialState.COMPLETE]
-    base = next((t for t in complete if t.user_attrs.get("is_baseline")), None)
+    rnd = load_round(a.space)
+    base = next((t for t in complete if t.user_attrs.get("is_baseline") and trial_round(t) == rnd), None)
     base_sps = base.value if base else None
     L = ["# OpenJev speed experiments (Optuna)", "",
          f"Generated by `tools/optuna_loop.py report` from `{a.db.name}` (study `{STUDY_NAME}`).",
@@ -369,15 +409,16 @@ def cmd_report(a):
               + f"peak {fmt(b.user_attrs.get('peak_mem_gb'), 2) or 'n/a'} GB.", "",
               "```json", json.dumps(b.params, indent=1), "```", ""]
     L += ["## All trials", "",
-          "`speedup` is vs 4.5 s/sample; `vs base` is vs the measured baseline trial of this "
-          "study (the bench does one optimizer step per micro-batch, so it is not exactly v8).", "",
+          "`speedup` is vs 4.5 s/sample; `vs base` is vs the measured baseline trial of the "
+          "current round (the bench does one optimizer step per micro-batch, so it is not exactly v8).", "",
           "| # | status | " + " | ".join(names) + " | samples/s | s/sample | speedup | vs base | "
           "tokens/s | peak GB | probe loss start→guard→end | note |",
           "|" + "---|" * (len(names) + 10)]
     for t in trials:
         u = t.user_attrs
         sps = t.value if t.state == TrialState.COMPLETE else u.get("samples_per_sec")
-        status = (t.state.name.lower() + (" (base)" if u.get("is_baseline") else "")
+        status = (t.state.name.lower()
+                  + (f" (base r{trial_round(t)})" if u.get("is_baseline") else "")
                   + (" (profile)" if u.get("is_profile") else ""))
         note = u.get("reason") or u.get("error") or ""
         note = str(note).replace("|", "/").replace("\n", " ")[:120]
@@ -401,6 +442,7 @@ def cmd_report(a):
         L.append("")
     else:
         L += [f"Parameter importances appear after 10 complete trials ({len(complete)} now).", ""]
+    L += kernel_section(trials)
     L += profile_section(trials)
     todo = [d for d in dims if not d["implemented"]]
     if todo:
@@ -409,6 +451,9 @@ def cmd_report(a):
               f"{' (reload)' if d['requires_reload'] else ''}: {d.get('idea', '').strip()}"
               for d in todo]
         L.append("")
+    # Hand-written notes after the marker survive regeneration.
+    if a.out.exists() and MANUAL_MARKER in a.out.read_text():
+        L += [a.out.read_text()[a.out.read_text().index(MANUAL_MARKER):].rstrip("\n"), ""]
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text("\n".join(L))
     print(f"wrote {a.out} ({len(trials)} trials)")

@@ -47,6 +47,8 @@ Parameter importances appear after 10 complete trials (3 now).
 - `torch_compile` ['off', 'on']: OJ-079. torch.compile(mode=default) with PEFT + float mask; keep only if stable. Ansel et al. 2024 (PyTorch 2), ASPLOS.
 - `dataloader_workers` [0, 1, 2]: OJ-076. Tokenize and collate in DataLoader workers with pin_memory and non_blocking copies. PyTorch data loading docs.
 
+<!-- manual: kept by report -->
+
 ## Ideas (round 1 → round 2)
 
 Round-1 facts: 2× T4 present; baseline 0.189 samples/s (5.3 s/sample), 101 tokens/s. `ple_cpu=0` trials reached 0.233 samples/s
@@ -64,3 +66,6 @@ do for a 2B LoRA forward/backward, so a large overhead is still hidden.
    https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html
 3. **Keep the PLE table on the GPU when memory allows** (`ple_cpu=0`; peak 10–12 GB with grad-ckpt). Expected: +20% as measured.
    This needs no new code, so TPE should focus there.
+4. **dtype (OJ-081).** `--dtype auto` chose bf16 on the T4 because `torch.cuda.is_bf16_supported()` counts emulated bf16;
+   sm75 has no native bf16, so round 1 likely ran emulated bf16. Round 2 defaults to fp16 + GradScaler (`dtype` dim) and
+   has its own baseline (yaml `round: 2`), since round 1's baseline also predates the OJ-080 mask fix.
