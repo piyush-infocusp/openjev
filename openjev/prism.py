@@ -9,15 +9,24 @@ attention mask of a decoder LLM:
 
 OpenJev already puts one <|flag|> token after each option. Here the flag plays
 the part of Prism's answer token: a flag sees the shared block, its own option
-and every option of its own question. The flag head and the Jev request and
-answer format do not change. Only internal details (mask and position ids) do.
+and the sibling FLAGS of its own question (not the sibling option tokens). The
+flag head and the Jev request and answer format do not change. Only internal
+details (mask and position ids) do.
+
+Why not the sibling option tokens (OJ-080): all options of a question start at
+the same position and every flag has the same embedding. If a flag could see
+every option of its question, all flags would attend to the same key set and
+differ only by their own position, so options of equal token length got exactly
+the same logit and training could not separate them (v8: near-uniform output,
+per-source accuracy frozen). A flag's own option tokens are visible to it alone,
+which breaks that symmetry; the sibling flags still let options be compared.
 
 Segments of one encoded request (see schema.encode):
   shared  : <|ctx|> state <|/ctx|> and every <|q|> name <|instr|> text <|/q|>
   option  : <|opt|> label     (one segment per option, all options of a
             question start at the same position id)
   flag    : <|flag|>          (belongs to its option, and also sees the
-            sibling options of its question)
+            sibling flags of its question)
 
 Gemma 4 mixes sliding-window and full-attention layers. Gemma4TextModel accepts
 a dict {"full_attention": mask, "sliding_attention": mask}, so both masks are
@@ -144,7 +153,10 @@ def prism_mask(segment, question, is_flag, position_ids, window: int | None = No
     m = (sk == SHARED)                                   # everyone sees the shared block
     m = m & (sq != SHARED) | (sq == SHARED) & (sk == SHARED)  # shared sees only shared
     m = m | ((sq == sk) & (sq > 0))                      # an option sees itself (both ways)
-    m = m | (is_flag[:, :, None] & (qq == qk) & (qk >= 0))  # a flag sees its question's options
+    # A flag also sees the sibling FLAGS of its question, never the sibling
+    # option tokens: seeing those makes every flag of a question attend to the
+    # same keys, so equal-length options get identical logits (OJ-080).
+    m = m | (is_flag[:, :, None] & is_flag[:, None, :] & (qq == qk) & (qk >= 0))
     m = m & real_k
     if window is not None:
         d = (position_ids[:, :, None] - position_ids[:, None, :]).abs()

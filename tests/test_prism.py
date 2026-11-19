@@ -49,7 +49,12 @@ def test_mask_rules(tok, tiny):
     assert m[shared[0], shared[-1]]             # shared block is bidirectional
     assert not m[shared[0], a]                  # shared does not see options
     flag0 = f.nonzero()[0, 0]
-    assert m[flag0, c]                          # a flag sees its sibling options
+    sib_flag = ((seg == opts[1]) & f).nonzero()[0, 0]
+    assert m[flag0, a]                          # a flag sees its own option
+    assert m[flag0, sib_flag]                   # and its sibling flags
+    # but not the sibling option tokens (OJ-080: with them every flag of a
+    # question saw the same keys, so equal-length options tied exactly)
+    assert not m[flag0, c]
     other_q = (q == 1).nonzero()[0, 0]
     assert not m[flag0, other_q]                # but not options of other questions
 
@@ -81,3 +86,31 @@ def test_padding_and_grad(tok, tiny):
     out.sum().backward()
     assert tiny.flag_head.weight.grad is not None
     tiny.eval()
+
+
+def test_equal_length_options_do_not_tie(tok, tiny):
+    """OJ-080 regression: single-token options must not get identical logits.
+    Under the old mask (a flag saw all option tokens of its question) all four
+    flags had exactly the same hidden state."""
+    crit = {"red": "", "blue": "", "green": "", "pink": ""}
+    assert {len(tok(k, add_special_tokens=False)["input_ids"]) for k in crit} == {1}
+    r = Record("r", "src", "test", "the answer is blue", Schema().choice("c", crit, "pick"), ["blue"])
+    with torch.no_grad():
+        out = tiny.flag_logits(prism_collate(tok, [r]))
+    assert (out.max() - out.min()).item() > 1e-4, out
+
+
+def test_eval_sources_align_with_labelled_views(tok):
+    """OJ-080 regression: evaluate() zipped question_views (labelled questions
+    only) against one source per question, so a None label shifted the source
+    of every later question in the chunk."""
+    import train_prism as tp
+    a = Record("a", "srcA", "test", "x", schema(["billing", "bug", "sales"]), [None, True])
+    b = Record("b", "srcB", "test", "y", schema(["bug", "sales", "billing"]), ["bug", False])
+    batch = prism_collate(tok, [a, b])
+    logits = torch.zeros(batch.flag_index.shape[0])
+    views = list(tp.question_views(logits, batch))
+    srcs = tp.view_sources([a, b])
+    assert len(views) == len(srcs) == 3
+    assert srcs == ["srcA", "srcB", "srcB"]
+    assert [kind for _, _, kind in views] == ["noul", "choice", "noul"]

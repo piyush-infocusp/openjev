@@ -103,6 +103,15 @@ def question_views(logits, batch):
                 yield logits[g["start"]:g["end"]], t, g["type"]
 
 
+def view_sources(records) -> list[str]:
+    """The source of every question that question_views yields, in the same
+    order (labelled questions only). Zipping question_views against one source
+    per question, labelled or not, shifted the sources after a None label."""
+    return [r.source for r in records
+            for q, y in zip(r.schema.questions, r.answers)
+            if y is not None and target_index(q, y) is not None]
+
+
 def reward_vector(k: int, t: int, kind: str, mode: str, device) -> torch.Tensor:
     r = torch.zeros(k, device=device)
     if mode == "graded" and kind == "score" and k > 1:
@@ -192,7 +201,9 @@ def grpo_loss(logits, ref_logits, batch, samples, args):
 
 # ---------------------------------------------------------------- model
 
-def build(args, device):
+def build(args, device, base: str | None = None):
+    """base: load this backbone instead of the one named in --init's
+    prism_config.json (tools/diag_predictions.py --model)."""
     from transformers import AutoTokenizer
 
     dtype = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}.get(args.dtype)
@@ -206,6 +217,7 @@ def build(args, device):
     base_name = args.model
     if args.init and (Path(args.init) / "prism_config.json").exists():
         base_name = json.loads((Path(args.init) / "prism_config.json").read_text())["base"]
+    base_name = base or base_name
     model = PrismOpenJev(gemma_text_backbone(base_name, dtype=dtype), causal=args.causal)
     add_special_tokens(tok, model)
     # A tokenizer saved by a checkpoint already holds the template tokens, so
@@ -333,8 +345,10 @@ def evaluate(model, tok, records, args, device):
         lens += b.attention_mask.sum(-1).tolist()
         with autocast(device, model):
             logits = model.flag_logits(b)
-        for (l, t, kind), src in zip(question_views(logits, b),
-                                     [r.source for r in chunk for _ in r.schema.questions]):
+        views = list(question_views(logits, b))
+        srcs = view_sources(chunk)
+        assert len(views) == len(srcs), (len(views), len(srcs))
+        for (l, t, kind), src in zip(views, srcs):
             per.setdefault(src, []).append((l.softmax(-1).cpu(), t))
     model.train()
     rows, all_conf, all_ok, nll = {}, [], [], []
@@ -351,6 +365,17 @@ def evaluate(model, tok, records, args, device):
             "ece": round(ece_from_conf(all_conf, all_ok), 4), "per_source": rows,
             "seq_p95": round(float(np.percentile(lens, 95)), 1) if lens else 0.0,
             "seq_max": int(max(lens)) if lens else 0}
+
+
+def load_val(pattern: str, eval_max: int, seed: int) -> list:
+    """A fixed seeded subset: eval_max split evenly over the files of `pattern`."""
+    paths = sorted(glob.glob(pattern))
+    val = []
+    for p in paths:
+        recs = list(read_jsonl(p))
+        random.Random(seed).shuffle(recs)
+        val += recs[: max(1, eval_max // max(1, len(paths)))]
+    return val
 
 
 def make_writer(args):
@@ -384,11 +409,7 @@ def main():
     if not train_paths:
         raise SystemExit(f"no train files match {args.train}")
     mixture = Mixture(train_paths, alpha=args.alpha, seed=args.seed)
-    val = []
-    for p in sorted(glob.glob(args.val)):
-        recs = list(read_jsonl(p))
-        random.Random(args.seed).shuffle(recs)
-        val += recs[: max(1, args.eval_max // max(1, len(glob.glob(args.val))))]
+    val = load_val(args.val, args.eval_max, args.seed)
 
     opt = make_optimizer(model, args)
     warm = max(1, int(args.warmup * args.steps))

@@ -74,13 +74,19 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
   print per-rank step time to spot stragglers. Bench each knob ~1 min.
 - [ ] OJ-079 [P3] torch.compile bench (mode=default) on T4 with PEFT + float mask; keep only if stable and faster.
 
-- [ ] OJ-080 [P1] Diagnose near-constant predictions: in v8 the per-source val accuracy was identical at SFT 30, SFT 60
-  and RL 20 (clinc .4898, diplomacy .96 = majority "true", pokerbench .52, banking77 .00). Check prediction
-  entropy, the argmax distribution per source, whether LoRA/head/template_delta weights change, the effective lr,
-  and option-position bias. Fix before the final run.
+- [ ] OJ-081 [P2] dtype auto on T4 picks bf16: torch.cuda.is_bf16_supported() defaults to including_emulation=True,
+  so sm75 reports True and v8 ran Gemma in emulated bf16 (embeddings.pt is bf16). Bench fp16 + GradScaler vs bf16 on
+  T4 (watch for Gemma fp16 overflow / skipped steps) before changing the default.
 
 ## Done
 
+- [x] OJ-080 [P1] Diagnose near-constant predictions: in v8 the per-source val accuracy was identical at SFT 30, SFT 60
+  and RL 20 (clinc .4898, diplomacy .96 = majority "true", pokerbench .52, banking77 .00). Check prediction
+  entropy, the argmax distribution per source, whether LoRA/head/template_delta weights change, the effective lr,
+  and option-position bias. Fix before the final run.
+      Root cause: the Prism mask let each flag see every option token of its question, so all flags of a question
+      attended to the same keys; flags differed only by position (equal-length options tied exactly). Fixed: a flag
+      sees shared + own option + sibling flags. Also fixed the per-source zip in evaluate().
 - [x] OJ-013 [P1] Full conversion run on this machine: no limit for banking77, clinc150, support_tickets and helpsteer3;
       100k rows for lichess_puzzles and pokerbench.
       Record the row counts and any download failure in the log.
@@ -199,3 +205,4 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
 - 2026-11-19 — Optuna speed loop: `tools/optuna_loop.py` (propose/ingest/report, SQLite study in runs/optuna, TPE multivariate + constant liar, baseline enqueued as trial 0; OOM/NaN/no-kernel/quality-guard -> PRUNED), `tools/search_space.yaml` (6 implemented dims + 9 planned placeholders), `bench_trials.py` (one model load per reload group, per-trial weight/data/seed reset, probe loss, OOM-safe), `PROFILE=optuna` in entry.py/build.sh (bakes trials into the kernel; kernel id openjev-prism-optuna), train_prism helpers (parse(argv), set_grad_ckpt, make_optimizer, optimizer_step). tests/test_optuna_loop.py; 155 tests pass. Not run on Kaggle yet.
 - 2026-11-19 — v8 short run COMPLETE: SFT60 acc .296 nll 2.126 ece .058; RL20 acc .299 nll 2.141 ece .067 (RL slightly worse NLL/ECE). ~35 s/step = 4.5 s/sample. Per-source accuracy did not change between evals -> OJ-080. Optuna round 1 (6 trials) pushed as kernel openjev-prism-optuna v1.
 - 2026-11-19 — Optuna r1 (running): GPU count 2 x T4. Trial0 baseline 12 samples/63 s = ~5.3 s/sample (no accum). sdpa 'efficient' -> 'No available kernel' with our float mask (so default falls back to math: T^2 memory, slow) -> OJ-074 answered; grad_ckpt off + bs2 + math -> OOM. Model load 418 s. OJ-080 diagnosis delegated (opus).
+- 2026-11-19 — OJ-080 done. Root cause of frozen per-source accuracy: openjev/prism.py prism_mask let a flag see all option tokens of its question -> every flag of a question attends to the same keys, so equal-length options get identical logits and others differ only via RoPE position (v8 val NLL 2.13 vs 2.31 uniform: near-uniform output, argmax never moved). Fix: flag sees shared + own option + sibling FLAGS. Also: evaluate() zipped labelled views against all questions (source shift after a None label) -> view_sources(). Ruled out: optimizer/GradScaler (bf16 run, scaler off; LoRA B, head, template_delta all changed; SFT->RL adapter diff 6.7), lr (warmup 1 step). New: tests/test_prism_learns.py (tiny Gemma learns toy choice to >=0.9 in 60 CPU steps, ~30 s; old mask stays 0.30), mask/tie/eval-alignment tests in tests/test_prism.py, tools/diag_predictions.py. v8 checkpoints are from the broken mask: retrain SFT from scratch.
