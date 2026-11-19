@@ -31,6 +31,27 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
       Compare them with `eval.py`. The MoE ships only if it is better.
 - [ ] OJ-051 [P5] Model card + eval tables. Release on the HF Hub **(user)**.
 
+- [ ] OJ-060 [P1] Prism v8 batching: hierarchical packing (source mix -> length bucket -> first-fit-decreasing rows of
+  <= 2048 tokens). Doc-id block-diagonal mask, positions restart per request. Test: packed flag logits == unpacked.
+- [ ] OJ-061 [P1] Time-budgeted Kaggle run: `--max-minutes` per stage (SFT ~65%, RL ~20%), eval+save every 100 steps
+  on 300 samples, copy checkpoints to out/ after each stage; print measured s/step in the log.
+- [ ] OJ-062 [P2] DDP on 2x T4 (torchrun): sharded mixture with per-rank seed, eval/save on rank 0, PLE on CPU per rank.
+  Local test with 2 CPU processes (gloo).
+- [ ] OJ-063 [P2] Zero-shot eval with a pretrained head: `--head lmhead` (score = logit Yes - logit No at each option,
+  softmax over options), `--template natural`, `--mask causal`. Report pass@1 / pass@k / ECE per source on val.
+- [ ] OJ-064 [P2] Per-source curriculum (tokenbender rule): pass@k ~ 0 -> SFT; 0 < pass@k < 1 -> direct RL;
+  near 1 -> calibration only. A/B: direct RL on "middle" sources vs SFT->RL, same val set. Needs OJ-063.
+- [ ] OJ-065 [P2] Flag-mode A/B: `--flag-mode isolated|siblings` (Prism-1 vs Sarvam). Add option-order flip-rate metric.
+- [ ] OJ-066 [P3] Calibration baselines in eval.py: frozen-backbone + head, SFT + temperature/Platt scaling;
+  report 15-bin ECE, Brier, selective accuracy at 50% coverage.
+- [ ] OJ-067 [P3] `--max-state-tokens 2048` on E2B once packing lands (helpsteer3: 53% truncated at 1024).
+- [ ] OJ-068 [P3] New data from docs/research/decision-models: typed-decisions (Apache-2.0), BEV (filter per source
+  license), MASSIVE en-US, Bitext. Converters must follow the Jev format rules.
+- [ ] OJ-069 [P3] `kaggle/prism/stop.sh` via SDK CancelKernelSession (needs scriptVersionId); watcher uses
+  `kaggle kernels logs -f` (stdbuf) for live step/loss reports.
+- [ ] OJ-070 [P4] E4B run (bs 2 x accum 16, 1024 tokens) after E2B is clean.
+- [ ] OJ-071 [P4] Optional live metrics via W&B **(user: add WANDB_API_KEY secret first)**.
+
 ## Done
 
 - [x] OJ-013 [P1] Full conversion run on this machine: no limit for banking77, clinc150, support_tickets and helpsteer3;
@@ -146,3 +167,4 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
 - 2026-11-19 — prism-train v4: preflight SFT OK on real Gemma 4 E2B (train/eval/save); RL resume failed (template-token ids >= 262144 rows: saved tokenizer already had the tokens, so no resize). Fix: resize when len(tok) > rows; regression test tests/test_prism_resume.py; 150 tests pass; pushed dataset + v5.
 - 2026-11-19 — Memory/stability fix: embedding matrix no longer trained (fp32 template_delta for the 7 template tokens), all trainable params fp32 (fp16 AdamW eps underflow), PLE table kept on CPU (--ple-cpu, saves 4.7 GB on E2B). Measured on meta: E2B 4.63B text (PLE 2.35B) -> 4.6 GB GPU fp16; E4B 7.46B (PLE 2.82B) -> 9.3 GB; LoRA r16 24M/35M. bs 4 x accum 8. Pushed v6 (v5 still running old code).
 - 2026-11-19 — prism-train v6 ERROR in SFT preflight: PLE weight on CPU but its embed_scale buffer on cuda. place() now detaches the whole PLE module during model.to; regression test tests/test_prism_place.py (meta device); 151 tests pass; pushed v7.
+- 2026-11-19 — prism-train v7: PREFLIGHT OK on real Gemma 4 E2B (first error-free run), but ~140 s/step (4.4 s/sample, bs4x8) -> 2000 steps would need ~78 h. Stopped by user at step ~70 (ce 2.7->~2.0-2.4). Log in runs/prism-20261119-1657-v7. Next: packed length-bucketed batching, DDP, time budget.
