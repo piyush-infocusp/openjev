@@ -420,6 +420,14 @@ def main(argv=None):
     for key, group in groups.items():
         model = None
         free(device)
+        if device == "cuda" and dict(key).get("dtype") == "fp32":
+            # fp32 E2B text weights are ~18.5 GB: more than a 16 GB T4, and the
+            # load would hold ~22 GB of host RAM (r2 SIGKILL). Skip without loading.
+            for t in group:
+                emit({"trial_number": t["trial_number"], "params": t["params"],
+                      "status": "unsupported", "n_gpu": n_gpu, "gpu_name": meta["gpu_name"],
+                      "error": "fp32 skipped: weights exceed T4 memory and host RAM"})
+            continue
         t_load = time.perf_counter()
         try:
             # Same seed for every group: the random flag head, LoRA A and new embedding

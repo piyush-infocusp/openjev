@@ -178,13 +178,38 @@ def gemma_text_backbone(name: str, dtype=torch.float32):
     # The audio tower has no SDPA support, so load everything with eager
     # attention, keep only the text decoder, then switch it to SDPA (the
     # attention layers read config._attn_implementation at forward time).
-    m = AutoModel.from_pretrained(name, dtype=dtype, attn_implementation="eager")
+    # Host-RAM safety: Gemma 4 ships in bf16. Asking from_pretrained for fp16 or
+    # fp32 converts the WHOLE multimodal model in host RAM, which held two copies
+    # and was SIGKILLed on Kaggle (~30 GB RAM, optuna r2). So load in bf16, drop
+    # the vision/audio towers first, then convert the text decoder one tensor at
+    # a time (peak = one extra tensor, not one extra model).
+    load_dtype = torch.bfloat16 if dtype in (torch.float16, torch.float32) else dtype
+    m = AutoModel.from_pretrained(name, dtype=load_dtype, attn_implementation="eager",
+                                  low_cpu_mem_usage=True)
     text = getattr(m, "language_model", m)
     for tower in ("audio_tower", "vision_tower", "embed_audio", "embed_vision"):
         if hasattr(m, tower):
             setattr(m, tower, None)
+    del m
+    import gc
+    gc.collect()
+    if dtype != load_dtype:
+        convert_inplace(text, dtype)
     text.config._attn_implementation = "sdpa"
     return text
+
+
+def convert_inplace(module: nn.Module, dtype) -> nn.Module:
+    """Cast floating parameters and buffers one tensor at a time."""
+    with torch.no_grad():
+        for sub in module.modules():
+            for name, p in list(sub.named_parameters(recurse=False)):
+                if p.is_floating_point() and p.dtype != dtype:
+                    sub._parameters[name] = nn.Parameter(p.data.to(dtype), requires_grad=p.requires_grad)
+            for name, b in list(sub.named_buffers(recurse=False)):
+                if b is not None and b.is_floating_point() and b.dtype != dtype:
+                    sub._buffers[name] = b.to(dtype)
+    return module
 
 
 class PrismOpenJev(nn.Module):
