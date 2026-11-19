@@ -7,9 +7,14 @@ trials that share the same `requires_reload` params (for example ple_cpu). Each 
      position and the seed, and builds a fresh optimizer, so all trials start equal;
   2. applies its params (bs, grad_ckpt, max_state_tokens, torch_threads, sdpa_backend);
   3. measures the loss on a fixed probe set (loss_start);
-  4. runs --warmup-steps SFT steps, then a timed loop of real SFT steps on the real
-     mixture for --trial-seconds (at least one step);
-  5. measures the probe loss again (loss_end) and the peak GPU memory.
+  4. runs --warmup-steps SFT steps (one optimizer step each) and measures the probe
+     loss again (loss_guard). The quality guard uses this one: every trial has taken
+     the same number of optimizer steps here, whatever its speed;
+  5. runs a timed loop of real SFT steps on the real mixture for --trial-seconds
+     (at least one step), then measures loss_end (informational) and peak GPU memory.
+
+The fp16 GradScaler scale is carried from trial to trial inside a group, so a fresh
+2^16 scale does not skip the first steps of every trial; skipped steps are counted.
 
 OOM, a missing SDPA kernel and other errors are caught per trial. Results go to
 --out (rewritten after every trial) and one JSON line per trial is printed.
@@ -139,7 +144,7 @@ def free(device):
 # ---------------------------------------------------------------- one trial
 
 def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device, dtype, own,
-              base_threads):
+              base_threads, scale):
     unknown = set(params) - TRIAL_PARAMS - RELOAD_PARAMS
     if unknown:
         raise ValueError(f"params {sorted(unknown)} have no handler in bench_trials.py")
@@ -158,13 +163,15 @@ def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device
         torch.cuda.reset_peak_memory_stats()
     # Constant lr, no warmup: a scheduler would barely move the weights in a few steps.
     opt = tp.make_optimizer(model, targs)
-    scaler = torch.amp.GradScaler("cuda", enabled=(device == "cuda" and dtype == torch.float16))
+    scaler = torch.amp.GradScaler("cuda", init_scale=scale["value"],
+                                  enabled=(device == "cuda" and dtype == torch.float16))
+    scale_start = scale["value"]
     loss_start = probe_loss(model, tok, probe, targs, device)
 
-    losses, tok_real, tok_pad = [], 0, 0
+    losses, tok_real, tok_pad, skipped = [], 0, 0, 0
 
     def step():
-        nonlocal tok_real, tok_pad
+        nonlocal skipped
         b = prism_collate(tok, mixture.take(bs), mst)
         real, pad = int(b.attention_mask.sum()), b.attention_mask.numel()   # CPU, no sync
         b = b.to(device)
@@ -172,13 +179,16 @@ def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device
             with tp.autocast(device, model):
                 loss = tp.sft_loss(model.flag_logits(b), b)
             scaler.scale(loss).backward()
+        before = scaler.get_scale()        # scaler.step syncs anyway (found_inf)
         tp.optimizer_step(opt, scaler)
+        skipped += int(scaler.is_enabled() and scaler.get_scale() < before)
         losses.append(loss.detach())
         return real, pad
 
     for _ in range(own.warmup_steps):
         step()
     losses.clear()
+    loss_guard = probe_loss(model, tok, probe, targs, device)
     if device == "cuda":
         torch.cuda.synchronize()
     t0 = time.perf_counter()
@@ -194,13 +204,17 @@ def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device
     peak = torch.cuda.max_memory_allocated() / 2**30 if device == "cuda" else None
     train = torch.stack(losses).float().cpu().tolist()
     loss_end = probe_loss(model, tok, probe, targs, device)
-    nan = not all(math.isfinite(x) for x in train + [loss_start, loss_end])
+    if scaler.is_enabled():
+        scale["value"] = scaler.get_scale()
+    nan = not all(math.isfinite(x) for x in train + [loss_start, loss_guard, loss_end])
     k = max(1, min(3, len(train) // 2))
     return {"status": "nan" if nan else "ok", "steps": steps, "samples": steps * bs,
             "seconds": sec, "samples_per_sec": steps * bs / sec, "s_per_sample": sec / (steps * bs),
             "s_per_step": sec / steps, "tokens_per_sec": tok_real / sec,
             "padded_tokens_per_sec": tok_pad / sec, "pad_frac": 1 - tok_real / max(tok_pad, 1),
-            "peak_mem_gb": peak, "loss_start": loss_start, "loss_end": loss_end,
+            "peak_mem_gb": peak, "loss_start": loss_start, "loss_guard": loss_guard,
+            "guard_steps": own.warmup_steps, "loss_end": loss_end, "scale_start": scale_start,
+            "scale_end": scale["value"], "skipped_steps": skipped,
             "train_loss_first": sum(train[:k]) / k, "train_loss_last": sum(train[-k:]) / k}
 
 
@@ -264,6 +278,7 @@ def main(argv=None):
                       "gpu_name": meta["gpu_name"]})
             continue
         load_s = time.perf_counter() - t_load
+        scale = {"value": 2.0 ** 16}          # GradScaler scale, carried within the group
         print(json.dumps({"group": dict(key), "load_s": round(load_s, 1)}), flush=True)
         for t in group:
             r = {"trial_number": t["trial_number"], "params": t["params"], "n_gpu": n_gpu,
@@ -271,7 +286,7 @@ def main(argv=None):
             failed = None
             try:
                 r.update(run_trial(model, tok, mixture, mix_state, snap, probe, targs, t["params"],
-                                   device, dtype, own, base_threads))
+                                   device, dtype, own, base_threads, scale))
             except Exception as e:
                 failed = (classify(e), f"{type(e).__name__}: {e}"[:400],
                           traceback.format_exc()[-1500:])

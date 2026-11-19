@@ -56,6 +56,7 @@ def test_propose_bench_ingest_report(tmp_path, tok):
     base_r = next(r for r in res if r["trial_number"] == 0)
     assert base_r["status"] == "ok", base_r
     assert base_r["samples_per_sec"] > 0 and base_r["steps"] >= 1
+    assert base_r["loss_guard"] is not None and base_r["guard_steps"] == 2
 
     run(LOOP + g + ["ingest", str(results)])
     run(LOOP + g + ["report", "--out", str(report)])
@@ -104,13 +105,15 @@ def test_report_importances_and_guard(tmp_path):
         res.append({"trial_number": t["trial_number"], "params": p, "status": "ok",
                     "samples_per_sec": 0.1 * p["bs"] + (0.05 if p["grad_ckpt"] == "off" else 0),
                     "loss_start": 2.0, "loss_end": 1.5, "tokens_per_sec": 100.0})
-    res[1].update(loss_end=2.4)                    # loss went up: guard prunes it
+    res[1].update(loss_guard=2.4)                  # loss went up after the guard steps: pruned
+    res[3].update(loss_guard=1.5, loss_end=1.95)   # slow config, fewer timed steps: still kept
     res[2].update(status="oom", samples_per_sec=None)
     (tmp_path / "r.json").write_text(json.dumps({"meta": {}, "results": res}))
     ol.main(["--db", str(db), "ingest", str(tmp_path / "r.json")])
     study = optuna.load_study(study_name=ol.STUDY_NAME, storage=f"sqlite:///{db}")
     st = {t.number: t.state for t in study.trials}
     assert st[1] == st[2] == optuna.trial.TrialState.PRUNED
+    assert st[3] == optuna.trial.TrialState.COMPLETE
     assert sum(s == optuna.trial.TrialState.COMPLETE for s in st.values()) == 10
     out = tmp_path / "E.md"
     ol.main(["--db", str(db), "report", "--out", str(out)])

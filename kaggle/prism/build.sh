@@ -3,7 +3,7 @@
 # Nothing is uploaded here. Upload with:  ./build.sh && ./push.sh
 #
 # PROFILE=optuna ./build.sh  stages the speed-trial kernel instead (id openjev-prism-optuna):
-# PROFILE and kaggle/prism/trials.json (from tools/optuna_loop.py propose) are baked into the
+# PROFILE (and TRIAL_SECONDS, default 50) and kaggle/prism/trials.json (from tools/optuna_loop.py propose) are baked into the
 # staged entry.py, so a new round only needs a kernel push, not a new dataset version.
 # trials.json is also put into openjev_src.zip as a fallback.
 set -euo pipefail
@@ -42,6 +42,8 @@ if [ -n "${PROFILE:-}" ]; then
 import os, sys
 profile, trials, entry = sys.argv[1:]
 print(f"import os; os.environ.setdefault('PROFILE', {profile!r})")
+if os.environ.get("TRIAL_SECONDS"):
+    print(f"os.environ.setdefault('TRIAL_SECONDS', {os.environ['TRIAL_SECONDS']!r})")
 if profile == "optuna":
     print(f"OPTUNA_TRIALS = {open(trials).read()!r}")
 print(open(entry).read())
