@@ -27,6 +27,11 @@ effective T4 fp16.
 - A test of a few minutes runs only when a 1-minute result is noisy.
 - Every speed change must have a correctness test before the benchmark, for example packed
   logits equal unpacked logits.
+- The configs come from an Optuna ask/tell loop (TPE, multivariate): `tools/optuna_loop.py`
+  (`propose` -> Kaggle `PROFILE=optuna` runs `bench_trials.py` -> `ingest` -> `report`). The
+  search space and the planned ideas are in `tools/search_space.yaml`; every trial is in
+  [`EXPERIMENTS.md`](EXPERIMENTS.md). Each trial restores the same start weights and data
+  stream, and a fixed probe set gives loss start/end for the quality guard.
 
 ## Techniques
 

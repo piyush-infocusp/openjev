@@ -86,6 +86,18 @@ class Mixture:
             source = self._rng.choices(sources, weights=cum_weights, k=1)[0]
             yield self._next(source)
 
+    def get_state(self):
+        """Snapshot of the stream position (rng, per-source orders and cursors)."""
+        return (self._rng.getstate(), {s: list(o) for s, o in self._orders.items()},
+                dict(self._cursors))
+
+    def set_state(self, state) -> None:
+        """Rewind the stream to a `get_state()` snapshot, so the same records come next."""
+        rng, orders, cursors = state
+        self._rng.setstate(rng)
+        self._orders = {s: list(o) for s, o in orders.items()}
+        self._cursors = dict(cursors)
+
     def take(self, n: int) -> list[Record]:
         it = iter(self)
         return [next(it) for _ in range(n)]

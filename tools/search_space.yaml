@@ -1,0 +1,164 @@
+# Search space for the OpenJev training-speed Optuna loop (tools/optuna_loop.py).
+#
+# One entry per idea. Fields:
+#   name             param name; bench_trials.py must have code that reads it
+#   type             categorical | int | float
+#   choices          categorical only
+#   low/high/step/log  int and float only
+#   default          the baseline value (trial 0 is the baseline, built from these)
+#   requires_reload  true = the model must be loaded again to change it (bench_trials
+#                    groups trials by these params and loads once per group)
+#   implemented      only implemented dimensions are sampled
+#   idea             short text: why it might be faster, and a reference
+#
+# New idea = add an entry here + the code in bench_trials.py (and train_prism.py) that
+# reads the param. Keep it `implemented: false` until that code exists: bench_trials
+# fails any trial that carries a param it has no handler for.
+#
+# Note: YAML 1.1 reads bare on/off/yes/no as booleans, so quote them.
+
+dimensions:
+  - name: bs
+    type: categorical
+    choices: [1, 2, 4, 8]
+    default: 4
+    requires_reload: false
+    implemented: true
+    idea: Micro-batch size. Larger batches use the GPU better but pad more (mixed 11- to 1000-token samples).
+
+  - name: grad_ckpt
+    type: categorical
+    choices: ["on", "off"]
+    default: "on"
+    requires_reload: false
+    implemented: true
+    idea: >-
+      OJ-073. Checkpointing costs ~33% recompute; E2B uses ~7 of 15 GB, so off may fit.
+      Chen et al. 2016, arXiv:1604.06174.
+
+  - name: max_state_tokens
+    type: categorical
+    choices: [512, 768, 1024]
+    default: 1024
+    requires_reload: false
+    implemented: true
+    idea: >-
+      Shorter state truncation = fewer tokens per sample. Trades quality for speed
+      (helpsteer3 is cut more), so compare tokens/s too.
+
+  - name: torch_threads
+    type: categorical
+    choices: [1, 2, 4]
+    default: 4
+    requires_reload: false
+    implemented: true
+    idea: >-
+      OJ-076. torch.set_num_threads for the CPU side (PLE lookup on CPU, collate).
+      Kaggle has ~4 cores. PyTorch tuning guide.
+
+  - name: sdpa_backend
+    type: categorical
+    choices: [default, efficient, math]
+    default: default
+    requires_reload: false
+    implemented: true
+    idea: >-
+      OJ-074. Force the SDPA kernel with torch.nn.attention.sdpa_kernel. Flash cannot take a
+      float mask; mem-efficient can (head_dim limits on T4). PyTorch SDPA docs.
+
+  - name: ple_cpu
+    type: categorical
+    choices: [1, 0]
+    default: 1
+    requires_reload: true
+    implemented: true
+    idea: >-
+      Per-Layer Embedding table on CPU (saves 4.7 GB on E2B) vs on GPU (no host->device copy
+      per batch). Gemma 4 config; train_prism.place().
+
+  # ------------------------------------------------------------ planned (not sampled yet)
+
+  - name: option_subsample_k
+    type: categorical
+    choices: [0, 8, 16, 24]
+    default: 0
+    requires_reload: false
+    implemented: false
+    idea: >-
+      OJ-072. Train on the gold option + k random negatives (0 = all options); clinc150 and
+      banking77 templates shrink from ~1000 to ~200 tokens. Mikolov et al. 2013, arXiv:1310.4546.
+
+  - name: packing
+    type: categorical
+    choices: ["off", "on"]
+    default: "off"
+    requires_reload: false
+    implemented: false
+    idea: >-
+      OJ-060. Hierarchical packing with a doc-id block-diagonal mask, positions restart per
+      request. Krell et al. 2021, arXiv:2107.02027.
+
+  - name: pack_len
+    type: categorical
+    choices: [1024, 2048]
+    default: 2048
+    requires_reload: false
+    implemented: false
+    idea: OJ-060. Row length for packing (used only when packing is on).
+
+  - name: ddp
+    type: categorical
+    choices: ["off", "on"]
+    default: "off"
+    requires_reload: true
+    implemented: false
+    idea: >-
+      OJ-062. One process per T4 with torchrun (needs a torchrun launch, so a reload).
+      Li et al. 2020, arXiv:2006.15704.
+
+  - name: fp16_compress_hook
+    type: categorical
+    choices: ["off", "on"]
+    default: "off"
+    requires_reload: true
+    implemented: false
+    idea: >-
+      OJ-078d. Halves the PCIe gradient traffic (small for 24M LoRA params). DDP comm hooks docs.
+
+  - name: bucket_cap_mb
+    type: categorical
+    choices: [25, 50]
+    default: 25
+    requires_reload: true
+    implemented: false
+    idea: OJ-078b. DDP gradient bucket size; set at DDP wrap time. DDP docs.
+
+  - name: quant
+    type: categorical
+    choices: [none, 8bit, nf4]
+    default: none
+    requires_reload: true
+    implemented: false
+    idea: >-
+      OJ-075. bitsandbytes 8-bit or 4-bit nf4 base weights (QLoRA). Less memory, but
+      dequantization costs time. Dettmers et al. 2023, arXiv:2305.14314; 2022, arXiv:2208.07339.
+
+  - name: torch_compile
+    type: categorical
+    choices: ["off", "on"]
+    default: "off"
+    requires_reload: false
+    implemented: false
+    idea: >-
+      OJ-079. torch.compile(mode=default) with PEFT + float mask; keep only if stable.
+      Ansel et al. 2024 (PyTorch 2), ASPLOS.
+
+  - name: dataloader_workers
+    type: categorical
+    choices: [0, 1, 2]
+    default: 0
+    requires_reload: false
+    implemented: false
+    idea: >-
+      OJ-076. Tokenize and collate in DataLoader workers with pin_memory and non_blocking
+      copies. PyTorch data loading docs.

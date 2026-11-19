@@ -20,3 +20,4 @@ docs/research/**/papers/
 *.safetensors
 *.pt
 .env
+kaggle/prism/trials.json

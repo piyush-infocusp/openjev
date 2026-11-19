@@ -54,7 +54,7 @@ from openjev.rlcd import ece, soft_ece
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
 
 
-def parse():
+def parse(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="google/gemma-4-E2B-it")
     ap.add_argument("--train", default="data/*.train.jsonl")
@@ -87,7 +87,7 @@ def parse():
     ap.add_argument("--grad-ckpt", action="store_true")
     ap.add_argument("--ple-cpu", type=int, default=1, help="keep the PLE table on CPU (CUDA only)")
     ap.add_argument("--cpu", action="store_true")
-    return ap.parse_args()
+    return ap.parse_args(argv)
 
 
 # ---------------------------------------------------------------- questions
@@ -216,9 +216,7 @@ def build(args, device):
         model.resize_token_embeddings(-(-len(tok) // 128) * 128)
 
     if args.grad_ckpt:
-        model.backbone.gradient_checkpointing_enable()
-        if hasattr(model.backbone, "enable_input_require_grads"):
-            model.backbone.enable_input_require_grads()
+        set_grad_ckpt(model, True)
 
     if args.lora_r > 0:
         from peft import LoraConfig, PeftModel, get_peft_model
@@ -246,6 +244,41 @@ def build(args, device):
         if p.requires_grad:
             p.data = p.data.float()
     return place(model, device, args.ple_cpu), tok, dtype
+
+
+def set_grad_ckpt(model, on: bool) -> None:
+    """Turn gradient checkpointing on or off on the text decoder. Works before
+    and after the LoRA wrap (the PeftModel is unwrapped first)."""
+    text = model._text_backbone()
+    if on:
+        text.gradient_checkpointing_enable()
+        if hasattr(text, "enable_input_require_grads"):
+            text.enable_input_require_grads()
+    elif getattr(text, "is_gradient_checkpointing", False):
+        text.gradient_checkpointing_disable()
+
+
+def make_optimizer(model, args):
+    """AdamW with two lr groups: the flag head (--head-lr) and everything else
+    that trains (LoRA, template delta) at --lr."""
+    head = list(model.flag_head.parameters())
+    body = [p for n, p in model.named_parameters() if p.requires_grad and not n.startswith("flag_head")]
+    return torch.optim.AdamW([{"params": body, "lr": args.lr}, {"params": head, "lr": args.head_lr}],
+                             weight_decay=0.0)
+
+
+def optimizer_step(opt, scaler):
+    """Unscale, clip to 1.0, step, update the scaler, zero the grads. Returns the grad norm."""
+    scaler.unscale_(opt)
+    gnorm = torch.nn.utils.clip_grad_norm_([p for g in opt.param_groups for p in g["params"]], 1.0)
+    scaler.step(opt)
+    scaler.update()
+    opt.zero_grad(set_to_none=True)
+    return gnorm
+
+
+def pick_device(args) -> str:
+    return "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
 
 
 def place(model, device, ple_cpu: bool):
@@ -343,7 +376,7 @@ def main():
     args = parse()
     random.seed(args.seed)
     torch.manual_seed(args.seed)
-    device = "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
+    device = pick_device(args)
     model, tok, dtype = build(args, device)
     model.train()
 
@@ -357,10 +390,7 @@ def main():
         random.Random(args.seed).shuffle(recs)
         val += recs[: max(1, args.eval_max // max(1, len(glob.glob(args.val))))]
 
-    head = list(model.flag_head.parameters())
-    body = [p for n, p in model.named_parameters() if p.requires_grad and not n.startswith("flag_head")]
-    opt = torch.optim.AdamW([{"params": body, "lr": args.lr}, {"params": head, "lr": args.head_lr}],
-                            weight_decay=0.0)
+    opt = make_optimizer(model, args)
     warm = max(1, int(args.warmup * args.steps))
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: min(1.0, (s + 1) / warm) * 0.5 * (1 + math.cos(math.pi * min(1.0, s / args.steps))))
@@ -411,11 +441,7 @@ def main():
                 else:
                     loss, stats = exact_pg_loss(logits, ref_logits(b), b, args)
             scaler.scale(loss / args.grad_accum).backward()
-        scaler.unscale_(opt)
-        gnorm = torch.nn.utils.clip_grad_norm_([p for g in opt.param_groups for p in g["params"]], 1.0)
-        scaler.step(opt)
-        scaler.update()
-        opt.zero_grad(set_to_none=True)
+        gnorm = optimizer_step(opt, scaler)
         sched.step()
 
         last = stats.get("ce", stats.get("reward", 0.0))
