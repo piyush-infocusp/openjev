@@ -74,6 +74,11 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
   print per-rank step time to spot stragglers. Bench each knob ~1 min.
 - [ ] OJ-079 [P3] torch.compile bench (mode=default) on T4 with PEFT + float mask; keep only if stable and faster.
 
+- [ ] OJ-080 [P1] Diagnose near-constant predictions: in v8 the per-source val accuracy was identical at SFT 30, SFT 60
+  and RL 20 (clinc .4898, diplomacy .96 = majority "true", pokerbench .52, banking77 .00). Check prediction
+  entropy, the argmax distribution per source, whether LoRA/head/template_delta weights change, the effective lr,
+  and option-position bias. Fix before the final run.
+
 ## Done
 
 - [x] OJ-013 [P1] Full conversion run on this machine: no limit for banking77, clinc150, support_tickets and helpsteer3;
@@ -192,3 +197,4 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
 - 2026-11-19 — prism-train v7: PREFLIGHT OK on real Gemma 4 E2B (first error-free run), but ~140 s/step (4.4 s/sample, bs4x8) -> 2000 steps would need ~78 h. Stopped by user at step ~70 (ce 2.7->~2.0-2.4). Log in runs/prism-20261119-1657-v7. Next: packed length-bucketed batching, DDP, time budget.
 - 2026-11-19 — v8 short run: SFT 60 steps done, ~35 s/step (8 samples). val@30 acc .303 nll 2.162 ece .072; val@60 acc .296 nll 2.126 ece .058. banking77 0.00, prm800k 0.04 (below majority). RL started (reward .25, kl .018). Added speed todos OJ-072..074.
 - 2026-11-19 — Optuna speed loop: `tools/optuna_loop.py` (propose/ingest/report, SQLite study in runs/optuna, TPE multivariate + constant liar, baseline enqueued as trial 0; OOM/NaN/no-kernel/quality-guard -> PRUNED), `tools/search_space.yaml` (6 implemented dims + 9 planned placeholders), `bench_trials.py` (one model load per reload group, per-trial weight/data/seed reset, probe loss, OOM-safe), `PROFILE=optuna` in entry.py/build.sh (bakes trials into the kernel; kernel id openjev-prism-optuna), train_prism helpers (parse(argv), set_grad_ckpt, make_optimizer, optimizer_step). tests/test_optuna_loop.py; 155 tests pass. Not run on Kaggle yet.
+- 2026-11-19 — v8 short run COMPLETE: SFT60 acc .296 nll 2.126 ece .058; RL20 acc .299 nll 2.141 ece .067 (RL slightly worse NLL/ECE). ~35 s/step = 4.5 s/sample. Per-source accuracy did not change between evals -> OJ-080. Optuna round 1 (6 trials) pushed as kernel openjev-prism-optuna v1.
