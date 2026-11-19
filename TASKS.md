@@ -62,6 +62,18 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
 - [ ] OJ-074 [P3] Speed: log which SDPA kernel runs with the custom float mask on T4 (mem-efficient vs math);
   if math, test FlexAttention or a boolean mask.
 
+- [ ] OJ-076 [P1] Input pipeline off the critical path: tokenize/collate/pack in DataLoader workers (prefetch_factor 2,
+  pin_memory, .to(non_blocking=True)); measure collate time vs GPU step time first (Python encode per record may be
+  a large share of the 4.5 s/sample). Set torch.set_num_threads per rank (Kaggle has ~4 CPU cores for 2 ranks).
+- [ ] OJ-077 [P1] Remove per-micro-step GPU syncs: no .item()/float() on losses or stats inside accumulation; keep
+  running sums on GPU, sync only at log steps (every 10 steps).
+- [ ] OJ-078 [P2] DDP tuning checklist for OJ-062: no_sync() on accumulation micro-steps; static_graph=True +
+  use_reentrant=False; gradient_as_bucket_view=True; bucket_cap_mb sweep (25/50); token-balanced shards per rank
+  (equal packed tokens) to avoid stragglers; sharded eval + all_gather; fp16_compress_hook (bench, small grads);
+  NCCL env for PCIe T4s (NCCL_IB_DISABLE=1; test NCCL_P2P_DISABLE 0/1); scale lr for the larger global batch;
+  print per-rank step time to spot stragglers. Bench each knob ~1 min.
+- [ ] OJ-079 [P3] torch.compile bench (mode=default) on T4 with PEFT + float mask; keep only if stable and faster.
+
 ## Done
 
 - [x] OJ-013 [P1] Full conversion run on this machine: no limit for banking77, clinc150, support_tickets and helpsteer3;
