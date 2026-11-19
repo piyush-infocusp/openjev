@@ -32,6 +32,9 @@ effective T4 fp16.
   search space and the planned ideas are in `tools/search_space.yaml`; every trial is in
   [`EXPERIMENTS.md`](EXPERIMENTS.md). Each trial restores the same start weights and data
   stream, and a fixed probe set gives loss start/end for the quality guard.
+- Round 2: `attn_backend` swaps the attention backend at runtime (`openjev/attn_backends.py`, no
+  reload). A `profile=1` trial (never drawn by TPE; enqueue it with `propose --enqueue-json`) adds
+  a torch.profiler table after its timed loop, so its samples/s still counts.
 
 ## Techniques
 
@@ -48,7 +51,11 @@ effective T4 fp16.
 | ID | Technique | Why it should help | Reference | Status | Result |
 |---|---|---|---|---|---|
 | OJ-073 | Gradient checkpointing only when needed (`auto`) | It costs about 33% more compute, and E2B uses about 7 of 15 GB | Chen et al. 2016, *Training Deep Nets with Sublinear Memory Cost*, arXiv:1604.06174 | todo | |
-| OJ-074 | Check the SDPA kernel with the custom float mask on the T4 | The math fallback stores T² scores and is slow | PyTorch SDPA docs: https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html | todo | |
+| OJ-074 | Check the SDPA kernel with the custom float mask on the T4 | The math fallback stores T² scores and is slow | PyTorch SDPA docs: https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html | done (Optuna r1) | `efficient` → "No available kernel" (head_dim 256/512 + float mask on sm75), so the default path is the math kernel |
+| OJ-082 | Profiler trial (`profile=1`, set with `propose --enqueue-json`): torch.profiler CPU + CUDA over 2 steps after the timed loop; top-25 ops by self CUDA / CPU time and the share of attention, matmul, masks, PLE lookup, copies and collate, in the trial's user attrs and EXPERIMENTS.md "Profiles" | r1 runs at ~120 tokens/s, about 10% of what a T4 should do, so a large overhead is hidden; the profile names it | PyTorch profiler recipe: https://pytorch.org/tutorials/recipes/recipes/profiler_recipe.html | implemented (r2) | |
+| OJ-083a | `attn_backend=sdpa_bool`: boolean Prism mask (True = attend) to SDPA instead of the additive float mask; bench records which SDPA kernels accept each head dim with a bool vs float mask (`sdpa_kernels`) | Half the mask memory; another SDPA kernel may become eligible | PyTorch SDPA docs: https://pytorch.org/docs/stable/generated/torch.nn.functional.scaled_dot_product_attention.html | implemented (r2) | equal logits (tests/test_attn_backends.py) |
+| OJ-083b | `attn_backend=chunked_math`: math attention over 256-query chunks, each chunk checkpointed (GQA without repeating K/V) | Attention memory O(chunk·T) instead of O(T²) per layer, so grad-ckpt off may fit | Same math as SDPA's math kernel (SDPA docs above); checkpointing: Chen et al. 2016, arXiv:1604.06174 | implemented (r2) | logits and grads equal SDPA within 1e-4 on CPU |
+| OJ-083c | `attn_backend=flex`: FlexAttention with a BlockMask whose mask_mod looks up the Prism mask (sliding window included), `torch.compile`d on CUDA, small Triton tiles for head_dim 256/512 | Skips fully masked blocks and never stores T² scores; fused kernel | Dong et al. 2024, *Flex Attention*, arXiv:2412.05496 | implemented (r2) | equal logits on CPU (eager, forward only); CPU training → "unsupported"; T4 untested |
 | OJ-075 | QLoRA 4-bit nf4 or 8-bit (bitsandbytes) | Less memory, which allows a larger batch or no checkpointing; but dequantization costs time | Dettmers et al. 2023, *QLoRA*, arXiv:2305.14314; Dettmers et al. 2022, *LLM.int8()*, arXiv:2208.07339 | todo | |
 | OJ-079 | `torch.compile` | Kernel fusion | PyTorch 2 paper, Ansel et al. 2024, ASPLOS: https://pytorch.org/assets/pytorch2-2.pdf | todo | |
 | done | PLE table on CPU | Frees about 4.7 GB on E2B | Gemma 4 config; `train_prism.place()` | done (v6/v7) | E2B weights on GPU: 9.3 → 4.6 GB |

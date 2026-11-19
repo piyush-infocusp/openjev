@@ -95,7 +95,8 @@ def test_report_importances_and_guard(tmp_path):
     space = ol.load_space(ROOT / "tools" / "search_space.yaml")
     impl = ol.implemented(space)
     assert {d["name"] for d in impl} == {"bs", "grad_ckpt", "max_state_tokens", "torch_threads",
-                                         "sdpa_backend", "ple_cpu"}
+                                         "sdpa_backend", "ple_cpu", "attn_backend", "profile"}
+    assert [d["name"] for d in impl if not d["sample"]] == ["profile"]
     assert all(not d["implemented"] for d in space if d["name"] in ("quant", "ddp", "packing"))
     trials = tmp_path / "t.json"
     ol.main(["--db", str(db), "propose", "--n", "12", "--out", str(trials)])
@@ -120,3 +121,97 @@ def test_report_importances_and_guard(tmp_path):
     text = out.read_text()
     assert "## Parameter importances" in text and "| bs |" in text
     assert "Ideas not implemented yet" in text and "`quant`" in text
+
+
+def test_round2_enqueue_profile_and_backends(tmp_path, tok):
+    """--enqueue-json exact configs -> bench (profile table, chunked_math, sdpa_bool, flex
+    unsupported on CPU) -> ingest -> report lists the profile under "## Profiles"."""
+    base = tiny_gemma(tmp_path, tok)
+    db, trials, results, report = (tmp_path / "study.db", tmp_path / "trials.json",
+                                   tmp_path / "results.json", tmp_path / "EXPERIMENTS.md")
+    g = ["--db", str(db)]
+    run(LOOP + g + ["propose", "--n", "0", "--out", str(trials),
+                    "--enqueue-json", '{"bs": 2, "attn_backend": "chunked_math", "profile": 1}',
+                    "--enqueue-json", '[{"bs": 2, "attn_backend": "flex"}, '
+                                      '{"bs": 2, "attn_backend": "sdpa_bool"}]'])
+    proposed = json.loads(trials.read_text())
+    # trial 0 is the enqueued baseline, then the three exact configs in order
+    assert [t["params"].get("attn_backend") for t in proposed] == [
+        "sdpa_default", "chunked_math", "flex", "sdpa_bool"]
+    assert proposed[1]["params"]["profile"] == 1 and "profile" not in proposed[2]["params"]
+    assert proposed[1]["params"]["ple_cpu"] == 0 and proposed[1]["params"]["grad_ckpt"] == "on"
+    proposed = proposed[1:]                 # the baseline is not needed here: it fails as "no result"
+    trials.write_text(json.dumps(proposed))
+    run([sys.executable, str(ROOT / "bench_trials.py"), "--trials", str(trials),
+         "--trial-seconds", "1", "--out", str(results), "--probe-n", "2", "--model", str(base),
+         "--cpu", "--train", str(ROOT / "tests/fixtures/*.jsonl"), "--max-state-tokens", "48",
+         "--attn-chunk", "16"])
+    res = {r["params"]["attn_backend"]: r for r in json.loads(results.read_text())["results"]}
+    assert res["chunked_math"]["status"] == "ok", res["chunked_math"]
+    assert res["sdpa_bool"]["status"] == "ok", res["sdpa_bool"]
+    assert res["flex"]["status"] == "unsupported", res["flex"]
+    prof = res["chunked_math"]["profile"]
+    assert res["chunked_math"]["is_profile"] and "profile" not in res["sdpa_bool"]
+    assert {"attention_fwd", "masks", "ple_lookup", "collate", "matmul_ops"} <= set(prof["shares"])
+    assert 0 < len(prof["top_cpu"]) <= 25 and prof["steps"] == 2
+
+    run(LOOP + g + ["ingest", str(results)])
+    run(LOOP + g + ["report", "--out", str(report)])
+    study = optuna.load_study(study_name="openjev-speed", storage=f"sqlite:///{db}")
+    by = {t.number: t for t in study.trials}
+    assert by[1].state == optuna.trial.TrialState.COMPLETE and by[1].user_attrs["is_profile"]
+    assert by[1].user_attrs["profile"]["top_cpu"]
+    assert by[2].state == optuna.trial.TrialState.PRUNED
+    text = report.read_text()
+    assert "## Profiles" in text and "### Trial 1 (chunked_math" in text and "(profile)" in text
+
+
+def test_enqueue_json_is_validated(tmp_path):
+    sys.path.insert(0, str(ROOT / "tools"))
+    import optuna_loop as ol
+    impl = ol.implemented(ol.load_space(ROOT / "tools" / "search_space.yaml"))
+    full = ol.parse_enqueue(['{"bs": 8}'], impl)[0]
+    assert full["bs"] == 8 and full["ple_cpu"] == 0 and full["profile"] == 0
+    with pytest.raises(SystemExit):
+        ol.parse_enqueue(['{"nope": 1}'], impl)
+    with pytest.raises(SystemExit):
+        ol.parse_enqueue(['{"attn_backend": "xformers"}'], impl)
+
+
+def test_round1_study_still_works(tmp_path):
+    """A study made with the round-1 space (no attn_backend/profile, ple_cpu default 1)
+    still proposes, ingests and reports with the round-2 space."""
+    import yaml
+    sys.path.insert(0, str(ROOT / "tools"))
+    import optuna_loop as ol
+    space = yaml.safe_load((ROOT / "tools" / "search_space.yaml").read_text())
+    old = [d for d in space["dimensions"] if d["name"] not in ("attn_backend", "profile")]
+    for d in old:
+        if d["name"] == "ple_cpu":
+            d["default"] = 1
+    old_yaml = tmp_path / "old.yaml"
+    old_yaml.write_text(yaml.safe_dump({"dimensions": old}))
+    db, t1, t2 = tmp_path / "s.db", tmp_path / "t1.json", tmp_path / "t2.json"
+
+    def fake(trials_file, out):
+        res = [{"trial_number": t["trial_number"], "params": t["params"], "status": "ok",
+                "samples_per_sec": 0.1 * t["params"]["bs"], "loss_start": 2.0, "loss_guard": 1.6,
+                "loss_end": 1.5} for t in json.loads(trials_file.read_text())]
+        out.write_text(json.dumps({"meta": {}, "results": res}))
+
+    ol.main(["--db", str(db), "--space", str(old_yaml), "propose", "--n", "3", "--out", str(t1)])
+    assert all("attn_backend" not in t["params"] for t in json.loads(t1.read_text()))
+    fake(t1, tmp_path / "r1.json")
+    ol.main(["--db", str(db), "--space", str(old_yaml), "ingest", str(tmp_path / "r1.json")])
+    ol.main(["--db", str(db), "propose", "--n", "3", "--out", str(t2),
+             "--enqueue-json", '{"profile": 1}'])
+    new = json.loads(t2.read_text())
+    assert [t["trial_number"] for t in new] == [3, 4, 5, 6]   # baseline (trial 0) not re-enqueued
+    assert all("attn_backend" in t["params"] for t in new) and new[0]["params"]["profile"] == 1
+    fake(t2, tmp_path / "r2.json")
+    ol.main(["--db", str(db), "ingest", str(tmp_path / "r2.json")])
+    out = tmp_path / "E.md"
+    ol.main(["--db", str(db), "report", "--out", str(out)])
+    text = out.read_text()
+    assert " attn_backend | profile | samples/s |" in text
+    assert "| 0 | complete (base) |" in text and "| 6 |" in text and "## Profiles" not in text

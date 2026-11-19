@@ -9,6 +9,8 @@
 #   requires_reload  true = the model must be loaded again to change it (bench_trials
 #                    groups trials by these params and loads once per group)
 #   implemented      only implemented dimensions are sampled
+#   sample           optional, default true. false = implemented, but TPE never draws it:
+#                    trials use the default unless `propose --enqueue-json` sets it (profile)
 #   idea             short text: why it might be faster, and a reference
 #
 # New idea = add an entry here + the code in bench_trials.py (and train_prism.py) that
@@ -16,6 +18,11 @@
 # fails any trial that carries a param it has no handler for.
 #
 # Note: YAML 1.1 reads bare on/off/yes/no as booleans, so quote them.
+#
+# Compatibility with earlier rounds: never change the choices (or their order) of an
+# existing dimension; Optuna rejects a changed categorical space for old trials. Changing
+# a default or adding a dimension is fine (old trials just lack the new param). The
+# baseline (trial 0) keeps the defaults it was run with.
 
 dimensions:
   - name: bs
@@ -69,12 +76,40 @@ dimensions:
   - name: ple_cpu
     type: categorical
     choices: [1, 0]
-    default: 1
+    default: 0
     requires_reload: true
     implemented: true
     idea: >-
       Per-Layer Embedding table on CPU (saves 4.7 GB on E2B) vs on GPU (no host->device copy
-      per batch). Gemma 4 config; train_prism.place().
+      per batch). Gemma 4 config; train_prism.place(). Round 1: 0 was +23% samples/s, so it
+      is the default from round 2 (the round-1 baseline trial 0 ran with 1).
+
+  - name: attn_backend
+    type: categorical
+    choices: [sdpa_default, sdpa_bool, chunked_math, flex]
+    default: sdpa_default
+    requires_reload: false
+    implemented: true
+    idea: >-
+      Round 2. Attention backend, swapped at runtime (openjev/attn_backends.py). sdpa_bool:
+      boolean mask instead of the additive float mask (half the mask memory; maybe another
+      SDPA kernel). chunked_math: math attention over 256-query chunks, each checkpointed,
+      so attention memory is O(chunk*T), not O(T^2) (may allow grad_ckpt off). flex:
+      FlexAttention with a BlockMask from the Prism mask (Dong et al. 2024,
+      arXiv:2412.05496); "unsupported" if Triton cannot build it on T4. SDPA docs.
+
+  - name: profile
+    type: categorical
+    choices: [0, 1]
+    default: 0
+    requires_reload: false
+    implemented: true
+    sample: false
+    idea: >-
+      Round 2. 1 = after the timed loop, run torch.profiler (CPU + CUDA) over 2 more steps
+      and store the top-25 ops by self CUDA / CPU time and the share of attention, matmul,
+      masks, PLE lookup, copies and collate. Objective is still samples/s. Set only with
+      `propose --enqueue-json`. PyTorch profiler recipe.
 
   # ------------------------------------------------------------ planned (not sampled yet)
 

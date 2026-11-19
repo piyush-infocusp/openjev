@@ -5,13 +5,18 @@ trials that share the same `requires_reload` params (for example ple_cpu). Each 
 
   1. restores the start weights (LoRA, flag head, template delta), the data stream
      position and the seed, and builds a fresh optimizer, so all trials start equal;
-  2. applies its params (bs, grad_ckpt, max_state_tokens, torch_threads, sdpa_backend);
+  2. applies its params (bs, grad_ckpt, max_state_tokens, torch_threads, sdpa_backend,
+     attn_backend; the attention backend is swapped at runtime, see openjev/attn_backends.py);
   3. measures the loss on a fixed probe set (loss_start);
   4. runs --warmup-steps SFT steps (one optimizer step each) and measures the probe
      loss again (loss_guard). The quality guard uses this one: every trial has taken
      the same number of optimizer steps here, whatever its speed;
   5. runs a timed loop of real SFT steps on the real mixture for --trial-seconds
-     (at least one step), then measures loss_end (informational) and peak GPU memory.
+     (at least one step), then measures loss_end (informational) and peak GPU memory;
+  6. profile=1 only: after all of the above (so samples/s, the guard and the data stream
+     equal a non-profile twin), runs torch.profiler (CPU + CUDA) over --profile-steps more
+     steps and stores a compact table (top ops by self CUDA / self CPU time, and the share
+     of attention, matmul, mask building, PLE lookup, copies and collate) as "profile".
 
 The fp16 GradScaler scale is carried from trial to trial inside a group, so a fresh
 2^16 scale does not skip the first steps of every trial; skipped steps are counted.
@@ -44,12 +49,14 @@ from pathlib import Path
 import torch
 
 import train_prism as tp
+from openjev import attn_backends as ab
 from openjev.mix import Mixture
 from openjev.prism import prism_collate
 
 # Params this script knows how to apply. A trial with any other param fails, so a
 # dimension marked `implemented: true` without code here never gives fake numbers.
-TRIAL_PARAMS = {"bs", "grad_ckpt", "max_state_tokens", "torch_threads", "sdpa_backend"}
+TRIAL_PARAMS = {"bs", "grad_ckpt", "max_state_tokens", "torch_threads", "sdpa_backend",
+                "attn_backend", "profile"}
 RELOAD_PARAMS = {"ple_cpu"}
 
 
@@ -60,6 +67,9 @@ def parse(argv=None):
     ap.add_argument("--trial-seconds", type=float, default=50.0)
     ap.add_argument("--warmup-steps", type=int, default=2)
     ap.add_argument("--probe-n", type=int, default=8, help="records in the fixed probe set")
+    ap.add_argument("--profile-steps", type=int, default=2, help="profiled steps (profile=1 trials)")
+    ap.add_argument("--attn-chunk", type=int, default=ab.DEFAULT_CHUNK,
+                    help="query rows per chunk for attn_backend=chunked_math")
     ap.add_argument("--out", default="/kaggle/working/out/optuna_results.json")
     own, rest = ap.parse_known_args(argv)
     return own, tp.parse(rest)
@@ -91,11 +101,19 @@ def sdpa_ctx(name):
     return sdpa_kernel(backend)
 
 
-def classify(e: BaseException) -> str:
+# Errors that mean "flex/Triton cannot build a kernel here" (e.g. head_dim 512 on sm75).
+FLEX_UNSUPPORTED = ("out of resource", "shared memory", "triton", "inductor", "backendcompilerfailed",
+                    "notimplementederror", "flex")
+
+
+def classify(e: BaseException, backend: str | None = None) -> str:
     msg = str(e)
     if isinstance(e, torch.cuda.OutOfMemoryError) or "out of memory" in msg.lower():
         return "oom"
-    if "No available kernel" in msg or "No viable backend" in msg:
+    if isinstance(e, ab.Unsupported) or "No available kernel" in msg or "No viable backend" in msg \
+            or "does not support backward on CPU" in msg:
+        return "unsupported"
+    if backend == "flex" and any(k in f"{type(e).__name__}: {msg}".lower() for k in FLEX_UNSUPPORTED):
         return "unsupported"
     return "error"
 
@@ -135,6 +153,98 @@ def clean(x):
     return x
 
 
+# ---------------------------------------------------------------- profiler
+
+PROFILE_REGIONS = {"attention_fwd": "oj::attention", "masks": "oj::masks", "ple_lookup": "oj::ple",
+                   "collate": "oj::collate"}
+MATMUL_OPS = {"aten::mm", "aten::bmm", "aten::addmm", "aten::baddbmm", "aten::addbmm", "aten::_scaled_mm"}
+COPY_OPS = {"aten::copy_", "aten::_to_copy", "aten::to", "aten::_copy_from"}
+
+
+def op_category(name: str):
+    """Op-name bucket (self time, forward + backward)."""
+    n = name.lower()
+    if name in MATMUL_OPS:
+        return "matmul_ops"
+    if "attention" in n or "softmax" in n or "flex" in n:
+        return "attention_ops"
+    if name in COPY_OPS or "memcpy" in n:
+        return "copy_ops"
+    if "embedding" in n:
+        return "embedding_ops"
+    return None
+
+
+def _ev(e, *names):
+    for n in names:
+        v = getattr(e, n, None)
+        if v is not None:
+            return float(v)
+    return 0.0
+
+
+def summarize_profile(events, wall_s: float, steps: int, top: int = 25) -> dict:
+    """Compact table from prof.key_averages() (times in ms).
+
+    shares: oj::* rows are record_function ranges (inclusive; attention_fwd, masks and
+    ple_lookup cover the forward only, backward is not attributable by range): cpu share
+    is of the wall time, cuda share of all kernel time. *_ops rows are op-name buckets by
+    self time over forward + backward: cpu share of all self CPU time, cuda share of all
+    kernel time. Ranges and buckets overlap (math attention's bmm is in attention_fwd and
+    in matmul_ops)."""
+    from torch.autograd import DeviceType
+    rows = []
+    for e in events:
+        if getattr(e, "device_type", DeviceType.CPU) != DeviceType.CPU:
+            continue                       # kernel rows: their time is in the launching op
+        rows.append((e.key, int(e.count), _ev(e, "self_cpu_time_total"),
+                     _ev(e, "self_device_time_total", "self_cuda_time_total"),
+                     _ev(e, "cpu_time_total"), _ev(e, "device_time_total", "cuda_time_total")))
+    ann = lambda k: k.startswith("oj::") or k.startswith("ProfilerStep")   # noqa: E731
+    cpu_total = sum(r[2] for r in rows) or 1.0
+    cuda_total = sum(r[3] for r in rows)
+    wall_us = wall_s * 1e6 or 1.0
+    shares = {}
+    for name, label in PROFILE_REGIONS.items():
+        hit = [r for r in rows if r[0] == label]
+        if hit:
+            c, d = sum(r[4] for r in hit), sum(r[5] for r in hit)
+            shares[name] = {"cpu_ms": round(c / 1e3, 2), "cpu": round(c / wall_us, 4),
+                            "cuda_ms": round(d / 1e3, 2), "cuda": round(d / cuda_total, 4) if cuda_total else None}
+    cats = {}
+    for r in rows:
+        k = None if ann(r[0]) else op_category(r[0])
+        if k:
+            c = cats.setdefault(k, [0.0, 0.0])
+            c[0] += r[2]
+            c[1] += r[3]
+    for k, (c, d) in sorted(cats.items()):
+        shares[k] = {"cpu_ms": round(c / 1e3, 2), "cpu": round(c / cpu_total, 4),
+                     "cuda_ms": round(d / 1e3, 2), "cuda": round(d / cuda_total, 4) if cuda_total else None}
+    ops = [r for r in rows if not ann(r[0])]
+
+    def table(i, total):
+        best = sorted((r for r in ops if r[i] > 0), key=lambda r: -r[i])[:top]
+        return [[r[0][:70], round(r[i] / 1e3, 3), round(r[i] / total, 4), r[1]] for r in best]
+    return {"steps": steps, "wall_ms": round(wall_s * 1e3, 1), "cpu_self_total_ms": round(cpu_total / 1e3, 1),
+            "cuda_total_ms": round(cuda_total / 1e3, 1), "shares": shares,
+            "top_cuda": table(3, cuda_total) if cuda_total else [], "top_cpu": table(2, cpu_total),
+            "columns": ["op", "self_ms", "share", "calls"]}
+
+
+def run_profile(step, device: str, steps: int) -> dict:
+    from torch.profiler import ProfilerActivity, profile
+    acts = [ProfilerActivity.CPU] + ([ProfilerActivity.CUDA] if device == "cuda" else [])
+    with profile(activities=acts, record_shapes=False) as prof:
+        t0 = time.perf_counter()
+        for _ in range(steps):
+            step()
+        if device == "cuda":
+            torch.cuda.synchronize()
+        wall = time.perf_counter() - t0
+    return summarize_profile(prof.key_averages(), wall, steps)
+
+
 def free(device):
     gc.collect()
     if device == "cuda":
@@ -148,6 +258,17 @@ def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device
     unknown = set(params) - TRIAL_PARAMS - RELOAD_PARAMS
     if unknown:
         raise ValueError(f"params {sorted(unknown)} have no handler in bench_trials.py")
+    attn = params.get("attn_backend", "sdpa_default")
+    try:
+        ab.set_attn_backend(model, attn, chunk=own.attn_chunk)
+        return _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device, dtype,
+                          own, base_threads, scale, attn)
+    finally:
+        ab.reset_attn_backend(model)   # a failed flex trial must not change the next trial
+
+
+def _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device, dtype, own,
+               base_threads, scale, attn):
     restore(model, snap)
     mixture.set_state(mix_state)
     random.seed(targs.seed)
@@ -157,6 +278,9 @@ def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device
     tp.set_grad_ckpt(model, is_on(params["grad_ckpt"]) if "grad_ckpt" in params else targs.grad_ckpt)
     torch.set_num_threads(int(params.get("torch_threads", base_threads)))
     backend = params.get("sdpa_backend", "default")
+    profile = is_on(params.get("profile", 0))
+    # flex compiles one graph per shape: pad T to the BlockMask block so shapes repeat.
+    pad_mult = ab.FLEX_BLOCK if attn == "flex" else 8
 
     free(device)
     if device == "cuda":
@@ -172,7 +296,8 @@ def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device
 
     def step():
         nonlocal skipped
-        b = prism_collate(tok, mixture.take(bs), mst)
+        with torch.profiler.record_function("oj::collate"):
+            b = prism_collate(tok, mixture.take(bs), mst, pad_to_multiple_of=pad_mult)
         real, pad = int(b.attention_mask.sum()), b.attention_mask.numel()   # CPU, no sync
         b = b.to(device)
         with sdpa_ctx(backend):
@@ -185,8 +310,12 @@ def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device
         losses.append(loss.detach())
         return real, pad
 
+    t_w = time.perf_counter()
     for _ in range(own.warmup_steps):
         step()
+    if device == "cuda":
+        torch.cuda.synchronize()
+    warmup_s = time.perf_counter() - t_w      # includes flex compile time
     losses.clear()
     loss_guard = probe_loss(model, tok, probe, targs, device)
     if device == "cuda":
@@ -208,7 +337,13 @@ def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device
         scale["value"] = scaler.get_scale()
     nan = not all(math.isfinite(x) for x in train + [loss_start, loss_guard, loss_end])
     k = max(1, min(3, len(train) // 2))
-    return {"status": "nan" if nan else "ok", "steps": steps, "samples": steps * bs,
+    extra = {"attn_backend": attn, "warmup_s": warmup_s}
+    if profile:
+        # After loss_end and timing: the profiled steps change nothing that is measured.
+        ab.set_attn_backend(model, attn, chunk=own.attn_chunk, label=True)
+        extra["profile"] = run_profile(step, device, own.profile_steps)
+        extra["is_profile"] = True
+    return {**extra, "status": "nan" if nan else "ok", "steps": steps, "samples": steps * bs,
             "seconds": sec, "samples_per_sec": steps * bs / sec, "s_per_sample": sec / (steps * bs),
             "s_per_step": sec / steps, "tokens_per_sec": tok_real / sec,
             "padded_tokens_per_sec": tok_pad / sec, "pad_frac": 1 - tok_real / max(tok_pad, 1),
@@ -270,6 +405,10 @@ def main(argv=None):
             model, tok, dtype = tp.build(build_args(targs, dict(key)), device)
             model.train()
             snap = snapshot(model)
+            try:
+                kernels = ab.sdpa_eligibility(model, device, dtype)
+            except Exception as e:  # diagnostics only
+                kernels = {"error": f"{type(e).__name__}: {e}"[:200]}
         except Exception as e:
             err = f"{type(e).__name__}: {e}"
             for t in group:
@@ -283,12 +422,14 @@ def main(argv=None):
         for t in group:
             r = {"trial_number": t["trial_number"], "params": t["params"], "n_gpu": n_gpu,
                  "gpu_name": meta["gpu_name"], "group_load_s": load_s}
+            if kernels:
+                r["sdpa_kernels"] = kernels
             failed = None
             try:
                 r.update(run_trial(model, tok, mixture, mix_state, snap, probe, targs, t["params"],
                                    device, dtype, own, base_threads, scale))
             except Exception as e:
-                failed = (classify(e), f"{type(e).__name__}: {e}"[:400],
+                failed = (classify(e, t["params"].get("attn_backend")), f"{type(e).__name__}: {e}"[:400],
                           traceback.format_exc()[-1500:])
             if failed:
                 # Free outside the except block: the traceback holds the tensors.

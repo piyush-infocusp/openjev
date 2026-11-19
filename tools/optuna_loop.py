@@ -4,6 +4,7 @@ The study lives here (SQLite); the trials run on Kaggle with bench_trials.py.
 One round:
 
   .venv/bin/python tools/optuna_loop.py propose --n 8       # study.ask() -> kaggle/prism/trials.json
+      [--enqueue-json '{"bs": 2, "profile": 1}' ...]        # + exact configs (missing keys = yaml defaults)
   PROFILE=optuna kaggle/prism/build.sh  (+ push)            # Kaggle runs bench_trials.py
   .venv/bin/python tools/optuna_loop.py ingest optuna_results.json   # study.tell()
   .venv/bin/python tools/optuna_loop.py report              # docs/speed/EXPERIMENTS.md
@@ -19,6 +20,10 @@ the guard does not punish a config for being slower (fewer steps in the timed lo
 loss_guard and loss_end must be finite, and the guard drop must be at least
     baseline_drop - max(guard_abs, guard_rel * |baseline_drop|).
 loss_end (after the timed loop) is only informational.
+
+Dimensions with `sample: false` in the yaml (profile) are never drawn by TPE: trials use
+the default unless an --enqueue-json config sets them. profile=1 trials still report
+samples/s as their objective; their profiler table is listed under "Profiles".
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from pathlib import Path
 
 import optuna
 import yaml
+import warnings
 from optuna.distributions import CategoricalDistribution, FloatDistribution, IntDistribution
 from optuna.trial import TrialState
 
@@ -53,6 +59,7 @@ def load_space(path) -> list[dict]:
         seen.add(d["name"])
         if d["type"] == "categorical" and d["default"] not in d["choices"]:
             raise ValueError(f"{d['name']}: default {d['default']!r} not in choices {d['choices']}")
+        d.setdefault("sample", True)
     return dims
 
 
@@ -70,6 +77,32 @@ def implemented(dims):
     return [d for d in dims if d["implemented"]]
 
 
+def parse_enqueue(texts, impl) -> list[dict]:
+    """--enqueue-json values (an object or a list of objects) -> exact configs: every
+    implemented dimension set, missing ones from the yaml default, values checked."""
+    by_name = {d["name"]: d for d in impl}
+    out = []
+    for text in texts or []:
+        obj = json.loads(text)
+        for cfg in obj if isinstance(obj, list) else [obj]:
+            if not isinstance(cfg, dict):
+                raise SystemExit(f"--enqueue-json: expected an object, got {cfg!r}")
+            bad = sorted(set(cfg) - set(by_name))
+            if bad:
+                raise SystemExit(f"--enqueue-json: {bad} are not implemented dimensions "
+                                 f"({sorted(by_name)})")
+            full = {}
+            for name, d in by_name.items():
+                v = cfg.get(name, d["default"])
+                ok = (v in d["choices"]) if d["type"] == "categorical" else (
+                    isinstance(v, (int, float)) and d["low"] <= v <= d["high"])
+                if not ok:
+                    raise SystemExit(f"--enqueue-json: {name}={v!r} is outside {d.get('choices', d)}")
+                full[name] = v
+            out.append(full)
+    return out
+
+
 # ---------------------------------------------------------------- study
 
 def open_study(db: Path, seed: int) -> optuna.Study:
@@ -82,7 +115,12 @@ def open_study(db: Path, seed: int) -> optuna.Study:
         n = len(optuna.load_study(study_name=STUDY_NAME, storage=storage).trials)
     except KeyError:
         pass
-    sampler = optuna.samplers.TPESampler(multivariate=True, constant_liar=True, seed=seed + n)
+    warnings.filterwarnings("ignore", category=optuna.exceptions.ExperimentalWarning)
+    # group=True: round-2 trials have params (attn_backend) that round-1 trials lack;
+    # grouped multivariate TPE models each co-occurring param set jointly instead of
+    # dropping the new params to independent sampling.
+    sampler = optuna.samplers.TPESampler(multivariate=True, group=True, constant_liar=True,
+                                         seed=seed + n)
     return optuna.create_study(study_name=STUDY_NAME, storage=storage, direction="maximize",
                                sampler=sampler, load_if_exists=True)
 
@@ -112,17 +150,30 @@ def cmd_propose(a):
     impl = implemented(dims)
     if not impl:
         raise SystemExit("no implemented dimensions in the search space")
+    queued = parse_enqueue(a.enqueue_json, impl)
     dists = {d["name"]: distribution(d) for d in impl}
+    sampled = {d["name"] for d in impl if d["sample"]}
+    defaults = {d["name"]: d["default"] for d in impl}
     reload_keys = [d["name"] for d in impl if d["requires_reload"]]
     # Trial 0 is the baseline. Re-enqueue it if every baseline so far failed or was abandoned.
     alive = (TrialState.COMPLETE, TrialState.RUNNING, TrialState.WAITING)
-    if not any(t.user_attrs.get("is_baseline") and t.state in alive for t in study.trials):
-        study.enqueue_trial({d["name"]: d["default"] for d in impl},
+    need_base = not any(t.user_attrs.get("is_baseline") and t.state in alive for t in study.trials)
+    if need_base:
+        study.enqueue_trial({n: v for n, v in defaults.items() if n in sampled},
                             user_attrs={"is_baseline": True})
+    for cfg in queued:   # a sample: false dim at its default stays out of the Optuna params
+        study.enqueue_trial({k: v for k, v in cfg.items() if k in sampled or v != defaults[k]},
+                            user_attrs={"enqueued": True})
     out = []
-    for _ in range(a.n):
+    # The baseline (when it is enqueued) counts toward --n; the --enqueue-json configs do not.
+    for _ in range(max(a.n, int(need_base)) + len(queued)):
         trial = study.ask()
-        params = {name: dist_suggest(trial, name, dist) for name, dist in dists.items()}
+        fixed = getattr(trial, "_fixed_params", {}) or {}
+        params = {}
+        for name, dist in dists.items():
+            if name in sampled or name in fixed:
+                params[name] = dist_suggest(trial, name, dist)
+            # sample: false and not enqueued -> not an Optuna param; bench uses the default
         out.append({"trial_number": trial.number, "params": params, "reload_keys": reload_keys})
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(json.dumps(out, indent=1) + "\n")
@@ -146,7 +197,8 @@ ATTRS = ("samples_per_sec", "tokens_per_sec", "padded_tokens_per_sec", "pad_frac
          "s_per_sample", "steps", "samples", "seconds", "peak_mem_gb", "loss_start",
          "loss_guard", "guard_steps", "loss_end", "train_loss_first", "train_loss_last",
          "scale_start", "scale_end", "skipped_steps", "n_gpu", "gpu_name", "status",
-         "error", "group_load_s")
+         "error", "group_load_s", "attn_backend", "warmup_s", "is_profile", "profile",
+         "sdpa_kernels")
 PRUNE_STATUS = {"oom", "nan", "unsupported"}
 
 
@@ -251,6 +303,43 @@ def importances(study) -> tuple[dict, str]:
         return optuna.importance.get_param_importances(study, evaluator=ev), "PED-ANOVA"
 
 
+def pct(x):
+    return "" if x is None else f"{100 * x:.1f}%"
+
+
+def profile_section(trials) -> list[str]:
+    """'## Profiles': the profiler table of every profile=1 trial."""
+    prof = [t for t in trials if t.user_attrs.get("is_profile") and t.user_attrs.get("profile")]
+    if not prof:
+        return []
+    L = ["## Profiles", "",
+         "torch.profiler over a few training steps after the timed loop (CPU + CUDA). "
+         "`oj::` ranges are inclusive and cover the forward only (attention_fwd, masks, "
+         "ple_lookup) or the collate call; CPU share is of the wall time. `*_ops` rows are "
+         "op-name buckets by self time over forward + backward; CPU share is of all self CPU "
+         "time. Ranges and buckets overlap (math attention's bmm counts in both).", ""]
+    for t in prof:
+        p = t.user_attrs["profile"]
+        L += [f"### Trial {t.number} ({t.user_attrs.get('attn_backend', 'sdpa_default')}, "
+              f"{t.user_attrs.get('gpu_name') or 'cpu'})", "",
+              f"Params: `{json.dumps(t.params)}`. {p.get('steps')} steps, wall {p.get('wall_ms')} ms, "
+              f"kernel time {p.get('cuda_total_ms')} ms, self CPU {p.get('cpu_self_total_ms')} ms.", "",
+              "| part | CPU ms | CPU share | CUDA ms | CUDA share |", "|---|---|---|---|---|"]
+        for k, v in p.get("shares", {}).items():
+            L.append(f"| {k} | {v.get('cpu_ms')} | {pct(v.get('cpu'))} | {v.get('cuda_ms')} | "
+                     f"{pct(v.get('cuda'))} |")
+        L.append("")
+        for key, title in (("top_cuda", "self CUDA"), ("top_cpu", "self CPU")):
+            rows = p.get(key) or []
+            if not rows:
+                continue
+            L += [f"Top {len(rows)} ops by {title} time:", "", "| op | ms | share | calls |",
+                  "|---|---|---|---|"]
+            L += [f"| `{r[0]}` | {r[1]} | {pct(r[2])} | {r[3]} |" for r in rows]
+            L.append("")
+    return L
+
+
 def cmd_report(a):
     dims = load_space(a.space)
     study = open_study(a.db, a.seed)
@@ -288,7 +377,8 @@ def cmd_report(a):
     for t in trials:
         u = t.user_attrs
         sps = t.value if t.state == TrialState.COMPLETE else u.get("samples_per_sec")
-        status = t.state.name.lower() + (" (base)" if u.get("is_baseline") else "")
+        status = (t.state.name.lower() + (" (base)" if u.get("is_baseline") else "")
+                  + (" (profile)" if u.get("is_profile") else ""))
         note = u.get("reason") or u.get("error") or ""
         note = str(note).replace("|", "/").replace("\n", " ")[:120]
         loss = (f"{fmt(u.get('loss_start'))}→{fmt(u.get('loss_guard'))}→{fmt(u.get('loss_end'))}"
@@ -311,6 +401,7 @@ def cmd_report(a):
         L.append("")
     else:
         L += [f"Parameter importances appear after 10 complete trials ({len(complete)} now).", ""]
+    L += profile_section(trials)
     todo = [d for d in dims if not d["implemented"]]
     if todo:
         L += ["## Ideas not implemented yet (not sampled)", ""]
@@ -336,6 +427,9 @@ def main(argv=None):
     p.add_argument("--out", type=Path, default=ROOT / "kaggle/prism/trials.json")
     p.add_argument("--abandon-running", action="store_true",
                    help="mark trials proposed earlier but never ingested as FAIL")
+    p.add_argument("--enqueue-json", action="append", default=[], metavar="JSON",
+                   help="enqueue an exact config (JSON object or list; missing keys = yaml "
+                        "defaults), asked before the --n TPE trials; repeatable")
     p.set_defaults(fn=cmd_propose)
     p = sub.add_parser("ingest", help="study.tell() the results of bench_trials.py")
     p.add_argument("results")
