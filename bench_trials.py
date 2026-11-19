@@ -35,7 +35,9 @@ Data: with --trial-stream (round 3+), every trial consumes the frozen trial stre
 otherwise a seeded Mixture (rewound per trial) and its first --probe-n records.
 
 The fp16 GradScaler scale is carried from trial to trial inside a group, so a fresh
-2^16 scale does not skip the first steps of every trial; skipped steps are counted.
+2^16 scale does not skip the first steps of every trial. A skipped WARM-UP step is redone on
+the same records (warmup_retries), so the guard always follows warmup_steps applied steps;
+skipped steps in the timed loop are counted (skipped_steps).
 
 OOM, a missing SDPA kernel and other errors are caught per trial. Results go to
 --out (rewritten after every trial) and one JSON line per trial is printed.
@@ -86,6 +88,7 @@ RELOAD_PARAMS = {"ple_cpu", "dtype"}
 # T4 before OJ-081 (bf16 without native support on sm75).
 DTYPES = {"fp16": "fp16", "bf16_emulated": "bf16", "fp32": "fp32"}
 HEADROOM = 0.92        # a micro-batch "fits" if its peak memory < HEADROOM x GPU memory
+WARMUP_RETRIES = 10    # redo a warm-up step the fp16 GradScaler skipped, at most this often
 
 
 def parse(argv=None):
@@ -469,9 +472,24 @@ def _run_trial(model, tok, data, data_state, snap, probe, targs, params, device,
         skipped += sk
         losses.append(loss)
 
+    # Warm-up: exactly warmup_steps APPLIED optimizer steps before the guard. A step the fp16
+    # GradScaler skips (inf/NaN grads; a fresh 2^16 scale at the start of a reload group) is
+    # redone on the same records: the skip changed no weights or Adam state, only the scale.
+    # Otherwise the baseline's guard drop could be ~0 and the guard would pass everything.
     t_w = time.perf_counter()
+    retries = 0
     for _ in range(st["warmup_steps"]):
-        step()
+        for _attempt in range(WARMUP_RETRIES + 1):
+            pos, n_ids = data.get_state(), len(ids)
+            _loss, sk = accum_step(model, opt, scaler, next_batch, accum, device, backend)
+            if not sk:
+                break
+            data.set_state(pos)
+            del ids[n_ids:]
+            retries += 1
+        else:
+            raise RuntimeError(f"fp16 GradScaler skipped the warm-up step {WARMUP_RETRIES + 1} times")
+    extra["warmup_retries"] = retries
     if device == "cuda":
         torch.cuda.synchronize()
     warmup_s = time.perf_counter() - t_w      # includes flex compile time

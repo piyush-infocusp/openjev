@@ -207,6 +207,37 @@ def test_mb_diag_and_restore(tmp_path, tok, monkeypatch):
         assert runs[0][k] == runs[1][k], k
 
 
+def test_skipped_warmup_step_is_redone(tmp_path, tok, monkeypatch):
+    """A warm-up step the fp16 GradScaler skips is redone on the same records, so the guard
+    follows the same applied optimizer steps (and records) as a run without a skip."""
+    bt, tp, targs, model, tk, dtype, data, probe, own = tiny_setup(tmp_path, tok)
+    snap, state = bt.snapshot(model), data.get_state()
+    st = {"fixed_mb": True, "global_batch": 4, "micro_batch": 2, "grad_accum": 2, "warmup_steps": 1,
+          "timed_steps": 1, "diag_mb": None, "trial_stream_sha": None}
+    params = {"grad_ckpt": "off", "dtype": "fp32", "ple_cpu": 0}
+
+    def trial():
+        return bt.run_trial(model, tk, data, state, snap, probe, targs, params, "cpu", dtype, own,
+                            torch.get_num_threads(), {"value": 2.0 ** 16}, dict(st))
+    clean = trial()
+    real, calls = bt.accum_step, []
+
+    def skip_first(model_, opt, scaler, next_batch, accum, device, backend):
+        calls.append(1)
+        if len(calls) == 1:                    # a skipped step: data consumed, no update
+            for _ in range(accum):
+                next_batch()
+            opt.zero_grad(set_to_none=True)
+            return torch.tensor(0.0), 1
+        return real(model_, opt, scaler, next_batch, accum, device, backend)
+    monkeypatch.setattr(bt, "accum_step", skip_first)
+    r = trial()
+    assert clean["warmup_retries"] == 0 and r["warmup_retries"] == 1
+    for k in ("warmup_ids_sha", "data_ids_sha", "loss_guard", "loss_end", "records_used"):
+        assert r[k] == clean[k], k
+    assert r["skipped_steps"] == 0
+
+
 def test_oom_at_fixed_mb_is_pruned_not_retried(tmp_path, tok, monkeypatch):
     """A trial that runs out of memory at the round micro-batch is infeasible_at_mb2 and
     PRUNED; no trial ever trains with a smaller micro-batch."""
