@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openjev"
+version = "0.1.0"
+description = "Open causal encoder that answers Jev-format questions with calibrated probabilities"
+requires-python = ">=3.10"
+dependencies = ["torch", "transformers", "safetensors"]
+
+[project.optional-dependencies]
+data = ["datasets", "python-chess"]
+eval = ["scikit-learn"]
+serve = ["fastapi", "uvicorn"]
+dev = ["pytest", "httpx"]
+
+[tool.setuptools.packages.find]
+include = ["openjev*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

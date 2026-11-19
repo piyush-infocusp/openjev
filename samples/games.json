@@ -1,0 +1,506 @@
+[
+  {
+    "name": "Lichess/chess-puzzles",
+    "id_or_url": "Lichess/chess-puzzles",
+    "latest_version": "This is the current/only version on HF (auto-updated mirror of Lichess puzzle DB, ~6.1M rows as of query); no v2/successor found.",
+    "size": "~6.1M rows",
+    "license": "CC0 (Lichess puzzle DB)",
+    "verified": true,
+    "raw_sample": {
+      "PuzzleId": "00008",
+      "GameId": "787zsVup/black#48",
+      "FEN": "r6k/pp2r2p/4Rp1Q/3p4/8/1N1P2R1/PqP2bPP/7K b - - 0 24",
+      "Moves": "f2g3 e6e7 b2b1 b3c1 b1c1 h6c1",
+      "Rating": 1939,
+      "RatingDeviation": 77,
+      "Popularity": 95,
+      "NbPlays": 10000,
+      "Themes": [
+        "crushing",
+        "hangingPiece",
+        "long",
+        "middlegame"
+      ]
+    },
+    "note": "Legal-move option list is a plausible superset built by hand (no chess engine available in sandbox); correct move f2g3 is included at index 0.",
+    "review": [
+      "warn",
+      "Move options were written by hand. A converter must list the real legal moves with python-chess and shuffle the options. The correct move is always option 0 here."
+    ],
+    "openjev": {
+      "id": "lichess-puzzle-00008",
+      "source": "Lichess/chess-puzzles",
+      "domain": "game",
+      "state": "Chess puzzle (FEN): r6k/pp2r2p/4Rp1Q/3p4/8/1N1P2R1/PqP2bPP/7K b - - 0 24. Black to move. Themes: crushing, hangingPiece, long, middlegame. Rating 1939.",
+      "questions": {
+        "best move (UCI)": {
+          "type": "choice",
+          "instructions": "Find the first move of the winning tactical sequence",
+          "criteria": {
+            "f2g3": "",
+            "f2e1": "",
+            "f2d4": "",
+            "f2c5": "",
+            "f2b6": "",
+            "f2a7": "",
+            "e7e1": "",
+            "e7e2": "",
+            "e7e3": "",
+            "e7e4": "",
+            "e7e5": "",
+            "e7e6": "",
+            "e7a7": "",
+            "e7b7": "",
+            "e7d7": "",
+            "e7f7": "",
+            "e7e8": "",
+            "a8b8": "",
+            "a8e8": "",
+            "h8g8": "",
+            "h8h7": "",
+            "b2c1": "",
+            "b2a1": "",
+            "b2b1": "",
+            "b2c3": "",
+            "b2d4": "",
+            "b2e5": "",
+            "b2f6": "",
+            "b2g7": "",
+            "b2c2": ""
+          }
+        }
+      },
+      "answers": {
+        "best move (UCI)": "f2g3"
+      }
+    }
+  },
+  {
+    "name": "Lichess/chess-position-evaluations",
+    "id_or_url": "Lichess/chess-position-evaluations",
+    "latest_version": "Current/only version on HF; continuously-updated Stockfish eval mirror, ~957.9M rows as of query.",
+    "size": "~958M rows",
+    "license": "CC0 (Lichess eval DB)",
+    "verified": true,
+    "raw_sample": {
+      "fen": "7r/1p3k2/p1bPR3/5p2/2B2P1p/8/PP4P1/3K4 b - -",
+      "line": "f7g7 e6e2 h8d8 e2d2 b7b5 c4b3 g7f6 d1e1 a6a5 a2a3",
+      "depth": 46,
+      "knodes": 4189972,
+      "cp": 69,
+      "mate": null
+    },
+    "note": "Move option list is a plausible hand-built superset (no chess engine in sandbox); correct move f7g7 included at index 0. cp=69 (centipawns) converted to 0.69 pawns. | Converted to the Jev format: score 'centipawn evaluation (pawns)' bucketed into 5 ordered levels.",
+    "review": [
+      "bad",
+      "Label leak: the context includes the engine line and the cp value, so the answer is in the input. Remove them from the context. Move options were written by hand."
+    ],
+    "openjev": {
+      "id": "lichess-eval-00000",
+      "source": "Lichess/chess-position-evaluations",
+      "domain": "game",
+      "state": "Chess position (FEN): 7r/1p3k2/p1bPR3/5p2/2B2P1p/8/PP4P1/3K4 b - -. Black to move. Stockfish depth-46 eval cp=69, principal line f7g7 e6e2 h8d8 e2d2 b7b5 c4b3 g7f6 d1e1 a6a5 a2a3.",
+      "questions": {
+        "best move (UCI)": {
+          "type": "choice",
+          "instructions": "Select the engine's best move and its evaluation",
+          "criteria": {
+            "f7g7": "",
+            "f7e8": "",
+            "f7f6": "",
+            "f7g6": "",
+            "c6d5": "",
+            "c6e4": "",
+            "c6f3": "",
+            "c6g2": "",
+            "c6b5": "",
+            "c6a4": "",
+            "h8g8": "",
+            "h8h7": "",
+            "h8h6": "",
+            "h8h5": "",
+            "h8h4": "",
+            "h8h3": "",
+            "h8h2": "",
+            "h8h1": "",
+            "b7b6": "",
+            "b7b5": "",
+            "f5f4": "",
+            "a6a5": ""
+          }
+        },
+        "centipawn evaluation (pawns)": {
+          "type": "score",
+          "instructions": "Select the engine's best move and its evaluation",
+          "criteria": [
+            "-20 to -12",
+            "-12 to -4",
+            "-4 to 4",
+            "4 to 12",
+            "12 to 20"
+          ]
+        }
+      },
+      "answers": {
+        "best move (UCI)": "f7g7",
+        "centipawn evaluation (pawns)": 2
+      }
+    }
+  },
+  {
+    "name": "RZ412/PokerBench",
+    "id_or_url": "RZ412/PokerBench",
+    "latest_version": "Original release still the current version on HF (train/test splits, 563,200 rows total); no v2 found. A community follow-up 'pokerbench-8max-reasoning-traces' (2026) exists — listed separately below as a newer dataset.",
+    "size": "563,200 rows",
+    "license": "MIT",
+    "verified": true,
+    "raw_sample": {
+      "instruction": "You are a specialist in playing 6-handed No Limit Texas Holdem. Small blind 0.5, big blind 1, everyone started with 100 chips. Position HJ, holding [King of Diamond and Jack of Spade]. Preflop: HJ raise 2.0, BB call (others fold). Flop King-Spade/Seven-Heart/Two-Diamond: BB check, HJ check. Turn Jack-Club: BB check, HJ bet 3, BB raise 10, HJ call. River Seven-Club: BB check. Pot is now 24.0 chips. Decide your optimal action.",
+      "output": "bet 18"
+    },
+    "note": null,
+    "review": [
+      "ok",
+      "Good fit. Build the options from the actions and bet sizes that are allowed in the hand."
+    ],
+    "openjev": {
+      "id": "pokerbench-train-00000",
+      "source": "RZ412/PokerBench",
+      "domain": "game",
+      "state": "You are a specialist in playing 6-handed No Limit Texas Holdem. Small blind 0.5, big blind 1, everyone started with 100 chips. Position HJ, holding [King of Diamond and Jack of Spade]. Preflop: HJ raise 2.0, BB call (others fold). Flop King-Spade/Seven-Heart/Two-Diamond: BB check, HJ check. Turn Jack-Club: BB check, HJ bet 3, BB raise 10, HJ call. River Seven-Club: BB check. Pot is now 24.0 chips. Decide your optimal action.",
+      "questions": {
+        "action": {
+          "type": "choice",
+          "instructions": "Decide the optimal poker action (6-handed NLHE)",
+          "criteria": {
+            "fold": "",
+            "check": "",
+            "call": "",
+            "bet 18": "",
+            "bet 24": "",
+            "all-in": ""
+          }
+        }
+      },
+      "answers": {
+        "action": "bet 18"
+      }
+    }
+  },
+  {
+    "name": "Mahesh111000/Hanabi_dataset",
+    "id_or_url": "Mahesh111000/Hanabi_dataset",
+    "latest_version": "Only version on HF (last modified 2025-06-16); 5 JSONL files (2-5 players + o4_mini_rlaif_cleaned). No v2 found.",
+    "size": "10M-100M rows (size_category)",
+    "license": "MIT",
+    "verified": true,
+    "raw_sample": {
+      "meta_game_run_id": "Seed_2",
+      "meta_game_parameters_players": 2,
+      "meta_game_parameters_random_start_player": true,
+      "turn_id": 1,
+      "state_observation": "P0 (2p Game). Lives: 3, Info: 8, Deck: 40. Fireworks: R0 Y0 G0 W0 B0. Discards: none. Visible Hands: P1 Hand: [Yellow 1, White 2, Yellow 2, Yellow 2, White 2]. Your Knowledge: 5x UnknownColor UnknownRank. Others' Knowledge: P1 5x UnknownColor UnknownRank.",
+      "legal_moves": "0.(Play 0) 1.(Play 1) 2.(Play 2) 3.(Play 3) 4.(Play 4) 5.(Reveal +1 color Y) 6.(Reveal +1 color W) 7.(Reveal +1 rank 1) 8.(Reveal +1 rank 2)"
+    },
+    "note": "Default viewer config fails to build (schema mismatch on move_ratings column across files); row fetched directly from raw 2_players.jsonl file. No ground-truth 'best move' label present in the row, so label left null.",
+    "review": [
+      "warn",
+      "The legal moves are real. The row has no best-move label. Use the move_ratings field as the label source."
+    ],
+    "openjev": {
+      "id": "hanabi-2p-seed2-turn1",
+      "source": "Mahesh111000/Hanabi_dataset",
+      "domain": "game",
+      "state": "Hanabi 2-player game, turn 1, Player 0 to act. Lives: 3, Info: 8, Deck: 40. Fireworks: R0 Y0 G0 W0 B0. No discards yet. P1's visible hand: Yellow 1, White 2, Yellow 2, Yellow 2, White 2. Own hand fully unknown (5 cards).",
+      "questions": {
+        "move": {
+          "type": "choice",
+          "instructions": "Choose the best legal Hanabi move as Player 0",
+          "criteria": {
+            "Play 0": "",
+            "Play 1": "",
+            "Play 2": "",
+            "Play 3": "",
+            "Play 4": "",
+            "Reveal player +1 color Y": "",
+            "Reveal player +1 color W": "",
+            "Reveal player +1 rank 1": "",
+            "Reveal player +1 rank 2": ""
+          }
+        }
+      },
+      "answers": {
+        "move": null
+      }
+    }
+  },
+  {
+    "name": "quintic/go9x9",
+    "id_or_url": "quintic/go9x9",
+    "latest_version": "Latest and only version; last modified 2026-09-15, generation completed 2026-09-14 (207,138 games, 19.6M positions). This is a brand-new (2026) dataset, confirmed most recent.",
+    "size": "207,138 games / 19.6M positions, webdataset tars",
+    "license": "gpl-3.0",
+    "verified": true,
+    "raw_sample": null,
+    "note": "Data is stored only as webdataset .tar shards (data/host-*-*.tar); the HF datasets-server failed to parse it (int() on NoneType in file-size tracking) and there is no lightweight text/json sample file in the repo to curl directly, so no raw sample could be fetched within budget. Per instructions, raw_sample and openjev set to null.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "DeepMind ChessBench (searchless_chess)",
+    "id_or_url": "google-deepmind/searchless_chess",
+    "latest_version": "GitHub repo actively maintained (download.sh dated 2025 copyright); puzzles.csv/action_value/state_value/behavioral_cloning .bag files are the current released data, no v2 found.",
+    "size": "puzzles.csv small; train action-value data is 2148 sharded .bag files (large)",
+    "license": "Apache-2.0",
+    "verified": true,
+    "raw_sample": {
+      "PuzzleId": "00MTG",
+      "Rating": 669,
+      "PGN": "1. e4 e5 2. Nf3 Nc6 3. Bc4 Nf6 4. Nc3 Be7 5. O-O O-O 6. h3 h6 7. d4 exd4 8. Nxd4 Nxd4 9. Qxd4 d6 10. f4 Be6 11. Nd5 Nxd5 12. exd5 Bf5 13. g4 Bh7 14. Qd2 Qd7 15. Qg2 Rae8 16. a4 a6 17. Ra3 Bh4 18. b4 b5 19. axb5 axb5 20. Bd3 Bxd3 21. Rxd3 Re7 22. g5 hxg5 23. fxg5 Rfe8 24. Bd2 Re2 25. Qf3 Qe7 26. Qh5",
+      "Solution": "Bf2+ Rxf2 Rxf2 Kxf2",
+      "FEN": "4r1k1/2p1qpp1/3p4/1p1P2PQ/1P5b/3R3P/2PBr3/5RK1 b - - 6 26",
+      "Moves": "h4f2 f1f2 e2f2 g1f2"
+    },
+    "note": "Fetched directly from the public GCS bucket referenced in data/download.sh (storage.googleapis.com/searchless_chess/data/puzzles.csv); HF has no mirror. Move options hand-built (no chess engine in sandbox); correct move h4f2 at index 0.",
+    "review": [
+      "warn",
+      "Move options were written by hand. Use the action-value files for real labels for each legal move."
+    ],
+    "openjev": {
+      "id": "chessbench-puzzle-00MTG",
+      "source": "google-deepmind/searchless_chess (data/puzzles.csv)",
+      "domain": "game",
+      "state": "ChessBench puzzle (FEN): 4r1k1/2p1qpp1/3p4/1p1P2PQ/1P5b/3R3P/2PBr3/5RK1 b - - 6 26. Black to move. Puzzle rating 669.",
+      "questions": {
+        "best move (UCI)": {
+          "type": "choice",
+          "instructions": "Find the first move of the winning tactical sequence",
+          "criteria": {
+            "h4f2": "",
+            "h4g5": "",
+            "h4g3": "",
+            "h4e1": "",
+            "e2e1": "",
+            "e2c2": "",
+            "e2d2": "",
+            "e2e3": "",
+            "e2e4": "",
+            "e2e5": "",
+            "e2e6": "",
+            "e2e7": "",
+            "e7e1": "",
+            "e7e2": "",
+            "e7e3": "",
+            "e7e4": "",
+            "e7e5": "",
+            "e7e6": "",
+            "e8e1": "",
+            "e8e2": "",
+            "e8e3": "",
+            "e8e4": "",
+            "e8e5": "",
+            "e8e6": "",
+            "g8h8": "",
+            "g8g7": "",
+            "g8f8": "",
+            "c7c6": "",
+            "c7c5": "",
+            "d6d5": ""
+          }
+        }
+      },
+      "answers": {
+        "best move (UCI)": "h4f2"
+      }
+    }
+  },
+  {
+    "name": "GTBench",
+    "id_or_url": "anvu99/GTBench (HF) / jinhaoduan/GTBench (GitHub)",
+    "latest_version": "The HF dataset id anvu99/GTBench does not exist/is inaccessible. The canonical project is the GitHub repo jinhaoduan/GTBench (paper arXiv:2402.12348), which has an HF Space leaderboard (GTBench/GTBench) but no static dataset of fixed rows on HF — it's a live LLM-vs-LLM game-generation framework over OpenSpiel (tic-tac-toe, connect-4, breakthrough, nim, Kuhn poker, etc). No newer versioned dataset release found.",
+    "size": "code/framework, not a fixed-row dataset",
+    "license": "unspecified (see repo)",
+    "verified": false,
+    "raw_sample": null,
+    "note": "GTBench generates game transcripts on the fly by running LLMs against each other via OpenSpiel; the repo contains only Python game/agent code, no static data files to sample a real row from. Treated as environment-only per instructions: raw_sample and openjev null.",
+    "review": [
+      "bad",
+      "The sample is a config file, not a decision. You must run the games to get data."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "BALROG",
+    "id_or_url": "balrog-ai/BALROG (GitHub)",
+    "latest_version": "Actively maintained GitHub benchmark suite (NetHack, MiniHack, BabyAI, Crafter, TextWorld, Baba Is You). It is an evaluation harness over live environments, not a fixed dataset with stored rows; no separate HF dataset id found under this name.",
+    "size": "code/environment suite, not a fixed-row dataset",
+    "license": "see repo (Apache-2.0-style)",
+    "verified": false,
+    "raw_sample": null,
+    "note": "BALROG runs agents live against Gym-style environments and produces trajectories only when you execute it; there is no static released dataset file to curl a row from. Per instructions (environment-only case): raw_sample and openjev null.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "TALES (microsoft/tale-suite)",
+    "id_or_url": "microsoft/tale-suite (GitHub) / talesuite/tale_suite_trajectories (HF)",
+    "latest_version": "microsoft/tale-suite (NeurIPS'25 text-adventure benchmark) has no static HF dataset under the microsoft org, but the project's own team published agent-trajectory data as talesuite/tale_suite_trajectories (last modified 2026-05-06), covering 122 games x agents x 5 seeds; this is the current/latest usable sample data.",
+    "size": "10K-100K rows (parquet)",
+    "license": "unspecified (check dataset card)",
+    "verified": true,
+    "raw_sample": {
+      "transcript_id": "JerichoEnv905-Qwen-Qwen2.5-72B-Instruct_zero-shot_s202411061",
+      "framework": "jericho",
+      "game": "JerichoEnv905",
+      "model": "Qwen/Qwen2.5-72B-Instruct",
+      "agent_type": "zero-shot",
+      "total_steps": 100,
+      "score": 0,
+      "max_score": 1,
+      "normalized_score": 0.0,
+      "turns_excerpt": "[{'role':'environment','content':'The phone rings.\\n\\nOh, no - how long have you been asleep? ... 9:05 by ...'}]"
+    },
+    "note": "Actual next-command ground truth wasn't visible in the truncated row fetched, so 'action' label left null; final episode normalized_score (0.0) taken directly from the row. | Converted to the Jev format: score 'episode normalized score' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Action options were made up and the action label is empty. Only the episode score is real."
+    ],
+    "openjev": {
+      "id": "tales-jericho-00000",
+      "source": "microsoft/tale-suite (talesuite/tale_suite_trajectories, jericho config)",
+      "domain": "game",
+      "state": "Text-adventure game JerichoEnv905 played by Qwen2.5-72B-Instruct (zero-shot agent), episode start. Environment text: 'The phone rings. Oh, no - how long have you been asleep? ... This is bad. This is very bad. The phone rings. 9:05 by ...'",
+      "questions": {
+        "action": {
+          "type": "choice",
+          "instructions": "Choose the next text-adventure command",
+          "criteria": {
+            "look": "",
+            "inventory": "",
+            "answer phone": "",
+            "wait": "",
+            "get up": "",
+            "go north": ""
+          }
+        },
+        "episode normalized score": {
+          "type": "score",
+          "instructions": "Choose the next text-adventure command",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "action": null,
+        "episode normalized score": 0
+      }
+    }
+  },
+  {
+    "name": "NetHack NLD",
+    "id_or_url": "Howuhh/nld-aa-taster (HF) / facebookresearch/nle / NLD-AA,NLD-NAO (upenn dataverse)",
+    "latest_version": "The full NetHack Learning Dataset (NLD-AA / NLD-NAO, ~10B+3B state-action-score transitions) is distributed via the nle_data_loader / dataverse, not row-queryable on HF. Howuhh/nld-aa-taster is a small public HF 'taster' sample of NLD-AA (AutoAscend bot trajectories) and is the most recent easily-verifiable HF artifact; last modified 2023-05-03, no newer HF version found as of 2026-09-17.",
+    "size": "3B transitions / 100,000 trajectories (full); taster is a small subset (hdf5)",
+    "license": "unspecified (NLE project, MIT-style)",
+    "verified": true,
+    "raw_sample": {
+      "gameid": 5,
+      "version": "3.6.6",
+      "points": 2055,
+      "deathdnum": 0,
+      "deathlev": 1,
+      "maxlvl": 1,
+      "hp": 0,
+      "maxhp": 49,
+      "deaths": 1,
+      "role": "Cav",
+      "race": "Gno",
+      "gender": "Fem",
+      "align": "Neu",
+      "death": "killed by a gecko while fainted from lack of food",
+      "turns": 15617
+    },
+    "note": "HF dataset viewer refuses this dataset (requires trust_remote_code); row-level per-timestep state/action data is inside an .hdf5 file, so the sample here is the per-game metadata JSON (fetched directly via HTTP range request) rather than a single frame/action row. | Converted to the Jev format: score 'final score (points)' bucketed into 5 ordered levels.",
+    "review": [
+      "ok",
+      "The score label is real. The sample is a summary of one game, not one step."
+    ],
+    "openjev": {
+      "id": "nld-aa-taster-game5",
+      "source": "Howuhh/nld-aa-taster (NetHack Learning Dataset - AutoAscend, taster subset)",
+      "domain": "game",
+      "state": "NetHack game trajectory (symbolic AutoAscend bot, winner of NetHack Challenge 2021). Character: Caveman Gnome Female Neutral. Result: killed by a gecko while fainted from lack of food, after 15617 turns.",
+      "questions": {
+        "final score (points)": {
+          "type": "score",
+          "instructions": "Predict the final game score (points) from the trajectory/character summary",
+          "criteria": [
+            "0",
+            "up to 1",
+            "up to 10",
+            "up to 100",
+            "more than 100"
+          ]
+        }
+      },
+      "answers": {
+        "final score (points)": 4
+      }
+    }
+  },
+  {
+    "name": "ianlee1996/pokerbench-8max-reasoning-traces",
+    "id_or_url": "ianlee1996/pokerbench-8max-reasoning-traces",
+    "latest_version": "2026 dataset (configs v3_a, v3_b), a newer chain-of-thought/reasoning-trace successor to PokerBench for 8-max NLHE with an explicit teacher-agreement signal; most recent poker-decision dataset found.",
+    "size": "medium (reasoning traces, exact row count not shown)",
+    "license": "unspecified (check dataset card)",
+    "verified": true,
+    "raw_sample": {
+      "prompt": "You are a professional No-Limit Texas Hold'em player. ... [Situation] Street: preflop | Your hand: 2h 2c | Board: (none) | Pot: 6.0 (6.0 BB) To call: 6.0 (6.0 BB) Blinds: 0.5/1.0 | Your stack: 78.4 BB | Active opponents: 6 | Position: UTG+1, OOP | Action: fold/fold/fold/fold/raise(medium) | Equity vs range: 19.0% | SPR: 13.1 | Opponent range ~ top 21% | Available actions: fold/call/raise/all-in/raise pct=0.5/0.67/1.0",
+      "think": "Required equity = to_call/(pot+to_call)=50%, raw equity only 19%, so calling is a clear ...",
+      "label": "fold",
+      "teacher_decision": "fold",
+      "agrees": true,
+      "exact": true
+    },
+    "note": "New 2025/2026 dataset added beyond the required list, per the 'up to 3 newer' instruction.",
+    "review": [
+      "ok",
+      "Good fit. The label comes from the teacher decision."
+    ],
+    "openjev": {
+      "id": "pokerbench-8max-v3a-00000",
+      "source": "ianlee1996/pokerbench-8max-reasoning-traces",
+      "domain": "game",
+      "state": "8-max NLHE preflop spot. Hand 2h2c, UTG+1, OOP, 6 active opponents. Pot 6.0BB, to call 6.0BB, stack 78.4BB, SPR 13.1. Action so far: fold/fold/fold/fold/raise(medium). Equity vs opponent range 19.0%, opponent range ~top21%.",
+      "questions": {
+        "action": {
+          "type": "choice",
+          "instructions": "Choose the EV-maximizing poker action (8-max NLHE, reasoning-trace dataset)",
+          "criteria": {
+            "fold": "",
+            "call": "",
+            "raise pct=0.5": "",
+            "raise pct=0.67": "",
+            "raise pct=1.0": "",
+            "all-in": ""
+          }
+        }
+      },
+      "answers": {
+        "action": "fold"
+      }
+    }
+  }
+]

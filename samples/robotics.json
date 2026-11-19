@@ -1,0 +1,657 @@
+[
+  {
+    "name": "ALFWorld",
+    "id_or_url": "https://huggingface.co/datasets/awawa-agi/alfworld-raw",
+    "latest_version": "raw TextWorld/ALFRED-derived export, mirrors upstream ALFWorld (askforalfred/alfworld) as of 2025; no newer HF release found as of 2026-09-17",
+    "size": "unknown (row-level access via datasets-server)",
+    "license": "MIT (per upstream ALFWorld repo)",
+    "verified": true,
+    "raw_sample": {
+      "id": "alfworld__pick_heat_then_place_in_recep__0",
+      "task_type": "pick_heat_then_place_in_recep",
+      "game_file_path": "pick_heat_then_place_in_recep-Apple-None-DiningTable-23/trial_T20190909_082402_950494/game.tw-pddl",
+      "game_content_excerpt": "PDDL domain/problem text for a household task: heat an Apple then place it in a receptacle, located via DiningTable-23 scene."
+    },
+    "note": "Row fetched live from datasets-server. Action list synthesized from the task_type semantics (heat-then-place) since only the PDDL/game text is provided as text field; no ground-truth action label in source row so labels are illustrative placeholders, not derived from the dataset. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "The action options and labels were made up. Use the expert plan from the environment for real next actions."
+    ],
+    "openjev": {
+      "id": "alfworld-pick_heat_then_place_in_recep-0",
+      "source": "awawa-agi/alfworld-raw",
+      "domain": "robotics",
+      "state": "Goal: pick an object, heat it, then place it in a receptacle (task type pick_heat_then_place_in_recep). Scene: household kitchen/dining scene with object Apple and target receptacle DiningTable-23 (TextWorld ALFRED environment). Step history: none (episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next action to progress the pick_heat_then_place_in_recep task.",
+          "criteria": {
+            "go to fridge": "",
+            "open fridge": "",
+            "take apple from fridge": "",
+            "go to microwave": "",
+            "heat apple with microwave": "",
+            "go to diningtable": "",
+            "put apple on diningtable": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next action to progress the pick_heat_then_place_in_recep task.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "go to fridge",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "ALFRED",
+    "id_or_url": "https://github.com/askforalfred/alfred (official repo; no unversioned HF mirror with viewer access found)",
+    "latest_version": "original ALFRED dataset (CVPR 2020), splits/oct21.json; no 2025-2026 update found",
+    "size": "~8k language-annotated trajectories (per paper)",
+    "license": "MIT",
+    "verified": true,
+    "raw_sample": {
+      "split": "train",
+      "repeat_idx": 0,
+      "task": "pick_cool_then_place_in_recep-LettuceSliced-None-DiningTable-17/trial_T20190909_070538_437648"
+    },
+    "note": "HF viewer-accessible ALFRED mirror not found (search returned unrelated results); fetched real split entry from official GitHub raw JSON instead, per instructions for GitHub sources. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "The subgoal options and labels were made up. ALFRED has real subgoal annotations in traj_data.json."
+    ],
+    "openjev": {
+      "id": "alfred-pick_cool_then_place_in_recep-LettuceSliced-DiningTable17-0",
+      "source": "askforalfred/alfred (github raw splits/oct21.json)",
+      "domain": "robotics",
+      "state": "Goal: pick up sliced lettuce, cool it, then place it on the dining table (task pick_cool_then_place_in_recep). Scene: kitchen/dining scene 17. Step history: none (episode start, repeat_idx 0).",
+      "questions": {
+        "next subgoal": {
+          "type": "choice",
+          "instructions": "Choose the next high-level subgoal for the pick_cool_then_place_in_recep task.",
+          "criteria": {
+            "navigate to lettuce": "",
+            "pick up lettuce slice": "",
+            "navigate to fridge": "",
+            "cool lettuce slice in fridge": "",
+            "navigate to diningtable": "",
+            "place lettuce slice on diningtable": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next high-level subgoal for the pick_cool_then_place_in_recep task.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next subgoal": "navigate to lettuce",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "MINT-SJTU/RoboFAC-dataset",
+    "id_or_url": "https://huggingface.co/datasets/MINT-SJTU/RoboFAC-dataset",
+    "latest_version": "current HF main branch (2025); dataset-viewer parquet conversion fails on test_qa splits, but raw training_qa.json is directly readable and is the canonical source",
+    "size": "training_qa.json + realworld_data/simulation_data video QA pairs",
+    "license": "see repo README (not explicitly stated in metadata fetched)",
+    "verified": true,
+    "raw_sample": {
+      "id": "72cf200e-aee8-4c0a-b3f0-9b2e3998fdb5",
+      "video": "MicrowaveTask-fork/fork_reach_view1/72cf200e-aee8-4c0a-b3f0-9b2e3998fdb5.mp4",
+      "question": "From the video, what task is the robot engaged in?",
+      "answer": "Put the fork in the cup and put them in the microwave"
+    },
+    "note": "Real QA pair fetched via range-request on training_qa.json (datasets-server viewer errors on this repo, so raw file fetch was used per instructions).",
+    "review": [
+      "warn",
+      "The answer is real. The other options were made up. The question needs the video, so this row is weak as text only."
+    ],
+    "openjev": {
+      "id": "robofac-72cf200e-aee8-4c0a-b3f0-9b2e3998fdb5",
+      "source": "MINT-SJTU/RoboFAC-dataset:training_qa.json",
+      "domain": "robotics",
+      "state": "Goal: identify the task a robot arm is performing in a video clip named fork_reach_view1. Scene: microwave/kitchen manipulation task involving a fork and a cup. Step history: none provided (single QA turn from video).",
+      "questions": {
+        "task description": {
+          "type": "choice",
+          "instructions": "Answer what task the robot is engaged in, given the video.",
+          "criteria": {
+            "Put the fork in the cup and put them in the microwave": "",
+            "Pour water into the cup": "",
+            "Open the microwave door": "",
+            "Stack the plates": ""
+          }
+        }
+      },
+      "answers": {
+        "task description": "Put the fork in the cup and put them in the microwave"
+      }
+    }
+  },
+  {
+    "name": "LIBERO (IPEC-COMMUNITY / physical-intelligence libero)",
+    "id_or_url": "https://huggingface.co/datasets/physical-intelligence/libero (LeRobot format; IPEC-COMMUNITY/libero_* mirrors same tasks)",
+    "latest_version": "LeRobot-format conversion current as of 2025; newer LIBERO-plus (2025-2026, see below) supersedes for robustness evaluation but original LIBERO task set unchanged",
+    "size": "task_index 0-129 across libero-goal/spatial/object/10 suites",
+    "license": "MIT (per LIBERO project)",
+    "verified": true,
+    "raw_sample": {
+      "task_index": 0,
+      "task": "put the white mug on the left plate and put the yellow and white mug on the right plate"
+    },
+    "note": "Task text fetched from meta/tasks.jsonl (LeRobot format); per-frame image/state/action rows exist but only text task field used, as instructed. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Only the task text is real. The options and labels were made up."
+    ],
+    "openjev": {
+      "id": "libero-task0",
+      "source": "physical-intelligence/libero:meta/tasks.jsonl",
+      "domain": "robotics",
+      "state": "Goal: put the white mug on the left plate and put the yellow and white mug on the right plate. Scene: tabletop kitchen with two mugs and two plates. Step history: none (task definition, episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": {
+            "pick up white mug": "",
+            "place white mug on left plate": "",
+            "pick up yellow and white mug": "",
+            "place yellow and white mug on right plate": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "pick up white mug",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "RoboCasa",
+    "id_or_url": "https://huggingface.co/datasets/haosulab/RoboCasa (raw sim data, viewer disabled); task text obtained via daixianjie/robocasa_human_lerobot (LeRobot conversion)",
+    "latest_version": "RoboCasa365 (2025-2026 expansion, see 'newer datasets' entry below) supersedes original RoboCasa for long-horizon/atomic task coverage",
+    "size": "unknown at HF org level",
+    "license": "MIT (per RoboCasa project)",
+    "verified": true,
+    "raw_sample": {
+      "task_index": 1,
+      "task": "pick the mug from the counter and place it under the coffee machine dispenser"
+    },
+    "note": "Official haosulab/RoboCasa viewer is disabled on HF; used a community LeRobot-format re-export (same underlying RoboCasa simulator tasks) to obtain a verifiable text row. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Only the task text is real. The options and labels were made up."
+    ],
+    "openjev": {
+      "id": "robocasa-task1",
+      "source": "daixianjie/robocasa_human_lerobot:meta/tasks.jsonl",
+      "domain": "robotics",
+      "state": "Goal: pick the mug from the counter and place it under the coffee machine dispenser. Scene: kitchen counter with coffee machine (RoboCasa simulated kitchen). Step history: none (episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": {
+            "navigate to counter": "",
+            "pick up mug": "",
+            "move to coffee machine": "",
+            "place mug under dispenser": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "navigate to counter",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "lerobot/* with task strings (CALVIN, LeRobot-format)",
+    "id_or_url": "https://huggingface.co/datasets/fywang/calvin-task-ABCD-D-lerobot",
+    "latest_version": "CALVIN task-ABCD-D LeRobot conversion, current 2025 mirror (official mees/calvin dataset has no HF-native viewer)",
+    "size": "unknown row count at this endpoint",
+    "license": "MIT (per CALVIN project)",
+    "verified": true,
+    "raw_sample": {
+      "task_index": 0,
+      "task": "move the door all the way to the right"
+    },
+    "note": "Used as the required 'lerobot/* with task strings' entry, satisfied via a LeRobot-format CALVIN mirror rather than a dataset literally under the lerobot/ org. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Only the task text is real. The options and labels were made up."
+    ],
+    "openjev": {
+      "id": "calvin-abcd-task0",
+      "source": "fywang/calvin-task-ABCD-D-lerobot:meta/tasks.jsonl",
+      "domain": "robotics",
+      "state": "Goal: move the sliding door all the way to the right. Scene: tabletop CALVIN environment with a cabinet door, drawer, blocks, and an LED/button. Step history: none (episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": {
+            "approach door handle": "",
+            "grasp door": "",
+            "slide door right": "",
+            "release door": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "approach door handle",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "Open X-Embodiment (OXE)",
+    "id_or_url": "https://huggingface.co/datasets/jxu124/OpenX-Embodiment",
+    "latest_version": "unclear; jxu124 mirror requires arbitrary code execution, HF viewer unsupported; no newer canonical HF OXE dataset located",
+    "size": "unknown",
+    "license": "unknown",
+    "verified": false,
+    "raw_sample": null,
+    "note": "datasets-server refused this dataset ('runs arbitrary Python code', not convertible without local datasets CLI conversion). No text row obtained; not fabricated per instructions.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "DROID",
+    "id_or_url": "https://huggingface.co/datasets/cadene/droid",
+    "latest_version": "LeRobot-format DROID mirror (matches upstream droid-dataset v1.0.1); current as of 2025",
+    "size": "unknown row count at meta level",
+    "license": "MIT (per DROID project)",
+    "verified": true,
+    "raw_sample": {
+      "task_index": 1,
+      "task": "Pick the bottle on the table and put it in the lower compartment of the tray"
+    },
+    "note": "Official lerobot/droid_1.0.1 path returned 404 on meta/tasks.jsonl; used cadene/droid mirror which is the same LeRobot-format DROID data and returned a valid row. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Only the task text is real. The options and labels were made up."
+    ],
+    "openjev": {
+      "id": "droid-task1",
+      "source": "cadene/droid:meta/tasks.jsonl",
+      "domain": "robotics",
+      "state": "Goal: pick the bottle on the table and put it in the lower compartment of the tray. Scene: real-world tabletop with a tray with compartments (DROID Franka arm setup). Step history: none (episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": {
+            "reach toward bottle": "",
+            "grasp bottle": "",
+            "move to tray lower compartment": "",
+            "release bottle in compartment": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "reach toward bottle",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "BridgeData V2",
+    "id_or_url": "https://huggingface.co/datasets/jxie/bridge_data_v2",
+    "latest_version": "current HF mirror of BridgeData V2 (2023 release, no 2025-2026 update found)",
+    "size": "53191 rows total (video/text pairs)",
+    "license": "MIT (per BridgeData V2 project)",
+    "verified": true,
+    "raw_sample": {
+      "text": "put lid on stove"
+    },
+    "note": "num_rows_total=53191 confirmed via datasets-server response. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Only the task text is real. The options and labels were made up."
+    ],
+    "openjev": {
+      "id": "bridgedatav2-row0",
+      "source": "jxie/bridge_data_v2",
+      "domain": "robotics",
+      "state": "Goal: put lid on stove. Scene: real-world kitchen manipulation setup (WidowX arm, BridgeData V2). Step history: none (episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next manipulation subgoal for 'put lid on stove'.",
+          "criteria": {
+            "reach for lid": "",
+            "grasp lid": "",
+            "move lid above stove": "",
+            "place lid on stove": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next manipulation subgoal for 'put lid on stove'.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "reach for lid",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "CALVIN",
+    "id_or_url": "https://huggingface.co/datasets/fywang/calvin-task-ABCD-D-lerobot",
+    "latest_version": "see lerobot/* entry above (same source used to satisfy both requirements)",
+    "size": "duplicate entry",
+    "license": "MIT",
+    "verified": true,
+    "raw_sample": {
+      "task_index": 1,
+      "task": "lift the blue block up"
+    },
+    "note": "Listed separately per the dataset checklist even though it shares the source used for the lerobot/* requirement. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Only the task text is real. The options and labels were made up."
+    ],
+    "openjev": {
+      "id": "calvin-abcd-task1",
+      "source": "fywang/calvin-task-ABCD-D-lerobot:meta/tasks.jsonl",
+      "domain": "robotics",
+      "state": "Goal: lift the blue block up. Scene: tabletop CALVIN environment with colored blocks. Step history: none (episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": {
+            "reach toward blue block": "",
+            "grasp blue block": "",
+            "lift blue block": "",
+            "hold blue block steady": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "reach toward blue block",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "BEHAVIOR-1K",
+    "id_or_url": "https://huggingface.co/datasets/behavior-1k/2025-challenge-task-instances",
+    "latest_version": "BEHAVIOR Challenge 2025 task-instances release (org also has behavior-1k/2026-challenge-demos, indicating a 2026 challenge in progress as of 2026-09-17)",
+    "size": "metadata/episodes.jsonl with per-episode task strings and trajectory stats",
+    "license": "unknown (not in fetched metadata)",
+    "verified": true,
+    "raw_sample": {
+      "episode_index": 10,
+      "tasks": [
+        "Turn on the radio receiver that's on the table in the living room."
+      ],
+      "length": 1956
+    },
+    "note": "Newer behavior-1k/2026-challenge-demos org repo exists, confirming an active 2026 challenge cycle; used the 2025-challenge-task-instances repo since it has directly readable text metadata. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Only the task text is real. The options and labels were made up. Episode length could be a real score label."
+    ],
+    "openjev": {
+      "id": "behavior1k-episode10",
+      "source": "behavior-1k/2025-challenge-task-instances:metadata/episodes.jsonl",
+      "domain": "robotics",
+      "state": "Goal: turn on the radio receiver that's on the table in the living room. Scene: living room in a household scene (BEHAVIOR-1K simulated home, bimanual robot). Step history: none (episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": {
+            "navigate to living room table": "",
+            "reach for radio receiver": "",
+            "press power button": "",
+            "verify radio is on": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "navigate to living room table",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "RoboVQA",
+    "id_or_url": "https://huggingface.co/datasets/lmms-lab/RoboVQA (also google/robovqa on GitHub)",
+    "latest_version": "unclear; HF dataset-viewer endpoint returned HTML/429 errors on repeated attempts",
+    "size": "unknown",
+    "license": "unknown",
+    "verified": false,
+    "raw_sample": null,
+    "note": "Multiple datasets-server calls to lmms-lab/RoboVQA returned rate-limit/HTML error pages instead of JSON; could not obtain a verified text row within tool budget. Not fabricated.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "OpenDriveLab/DriveLM",
+    "id_or_url": "https://huggingface.co/datasets/OpenDriveLab/DriveLM",
+    "latest_version": "v1_1 (nuScenes-based) per file listing (v1_1_train_nus.json, v1_1_val_nus_q_only.json); repo is access-gated",
+    "size": "unknown",
+    "license": "gated (requires HF login/agreement)",
+    "verified": false,
+    "raw_sample": null,
+    "note": "Repo requires authentication ('Access to dataset OpenDriveLab/DriveLM is restricted... Please log in.'); no anonymous text row obtainable. Not fabricated.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "BDD-X",
+    "id_or_url": "https://huggingface.co/datasets/omidmsl/BDD-X_attention (also javyduck/SafeAuto-BDDX)",
+    "latest_version": "unclear",
+    "size": "unknown",
+    "license": "unknown",
+    "verified": false,
+    "raw_sample": null,
+    "note": "datasets-server repeatedly returned HTML error pages or 'Job manager crashed' for both candidate BDD-X mirrors; could not obtain a verified text row within tool budget. Not fabricated.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "R2R / VLN-CE",
+    "id_or_url": "https://huggingface.co/datasets/oscarqjh/VLN-CE-R2R_easi (also original Matterport3D R2R github repo)",
+    "latest_version": "unclear",
+    "size": "unknown",
+    "license": "unknown",
+    "verified": false,
+    "raw_sample": null,
+    "note": "HF datasets-server returned HTML error page for oscarqjh/VLN-CE-R2R_easi; GitHub raw fetch of a known R2R_train.json mirror 404'd. Could not obtain a verified text row within tool budget. Not fabricated.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "LIBERO-plus (newer, 2025-2026)",
+    "id_or_url": "https://huggingface.co/datasets/Sylvest/libero_plus_lerobot",
+    "latest_version": "LIBERO-plus robustness benchmark (2025), extends LIBERO with perturbed/augmented evaluation conditions; verified present on HF as of 2026-09-17",
+    "size": "task_index-based, mirrors/extends LIBERO task set",
+    "license": "unknown (not in fetched metadata)",
+    "verified": true,
+    "raw_sample": {
+      "task_index": 1,
+      "task": "put the cream cheese in the bowl"
+    },
+    "note": "Added as one of the up-to-3 newer (2025-2026) embodied decision datasets requested. | Converted to the Jev format: score 'task progress' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "Only the task text is real. The options and labels were made up."
+    ],
+    "openjev": {
+      "id": "liberoplus-task1",
+      "source": "Sylvest/libero_plus_lerobot:meta/tasks.jsonl",
+      "domain": "robotics",
+      "state": "Goal: put the cream cheese in the bowl. Scene: tabletop kitchen manipulation, LIBERO-plus robustness-augmented variant. Step history: none (episode start).",
+      "questions": {
+        "next action": {
+          "type": "choice",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": {
+            "pick up cream cheese": "",
+            "move above bowl": "",
+            "place cream cheese in bowl": "",
+            "verify placement": ""
+          }
+        },
+        "task progress": {
+          "type": "score",
+          "instructions": "Choose the next manipulation subgoal.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "next action": "pick up cream cheese",
+        "task progress": 0
+      }
+    }
+  },
+  {
+    "name": "RoboCasa365 (newer, 2025-2026)",
+    "id_or_url": "https://huggingface.co/datasets/happyhappy-jun/robocasa365-subtask (org also has ember-lab-berkeley/robocasa365-*)",
+    "latest_version": "RoboCasa365 expansion of RoboCasa to atomic/composite long-horizon kitchen tasks; multiple 2025-2026 HF mirrors found, confirming currency",
+    "size": "unknown (webdataset/tar format)",
+    "license": "unknown",
+    "verified": false,
+    "raw_sample": null,
+    "note": "datasets-server failed to parse the webdataset tar shards ('unexpected end of data'); dataset's existence and 2025-2026 currency is confirmed via multiple related HF repos (happyhappy-jun, herry123435, ember-lab-berkeley) but no clean text row obtained within tool budget. Not fabricated.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  },
+  {
+    "name": "BEHAVIOR Challenge 2025/2026 task metadata (newer)",
+    "id_or_url": "https://huggingface.co/datasets/behavior-1k/2026-challenge-demos",
+    "latest_version": "2026-challenge-demos repo exists alongside 2025-challenge-demos/-rawdata/-task-instances, confirming an active 2026 BEHAVIOR Challenge cycle as of 2026-09-17",
+    "size": "unknown",
+    "license": "unknown",
+    "verified": false,
+    "raw_sample": null,
+    "note": "Included to document the newest BEHAVIOR Challenge cycle; did not fetch a separate row from the 2026 repo within tool budget since the 2025-challenge-task-instances entry above already provides a verified BEHAVIOR-1K text sample from the same task family.",
+    "review": [
+      "none",
+      "No sample. See the note."
+    ],
+    "openjev": null
+  }
+]

@@ -1,0 +1,148 @@
+<title>OpenJev Dataset Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+<style>
+:root{
+  --ground:#f3f5f4; --panel:#ffffff; --ink:#18201f; --muted:#5b6865; --line:#d6dedb;
+  --accent:#1f6f6a; --accent-soft:#dcece9; --token:#8a3b12; --token-bg:#fbeee4;
+  --ok:#2c7a3f; --ok-bg:#e1f1e4; --warn:#9a6300; --warn-bg:#fbf0d6; --bad:#a63a32; --bad-bg:#f8e1de;
+  --code:#eef2f1;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#121716; --panel:#1a2120; --ink:#e3ebe8; --muted:#94a39f; --line:#2c3735;
+    --accent:#6cc4bb; --accent-soft:#1e3533; --token:#f0a878; --token-bg:#3a2518;
+    --ok:#7fce8f; --ok-bg:#1d3323; --warn:#e8b95a; --warn-bg:#3a2e14; --bad:#ee8b82; --bad-bg:#3d1f1c;
+    --code:#141a19;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#121716; --panel:#1a2120; --ink:#e3ebe8; --muted:#94a39f; --line:#2c3735;
+  --accent:#6cc4bb; --accent-soft:#1e3533; --token:#f0a878; --token-bg:#3a2518;
+  --ok:#7fce8f; --ok-bg:#1d3323; --warn:#e8b95a; --warn-bg:#3a2e14; --bad:#ee8b82; --bad-bg:#3d1f1c;
+  --code:#141a19;
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font:15px/1.55 "IBM Plex Sans",system-ui,sans-serif;padding-inline:16px;padding-block:28px 64px}
+.wrap{max-width:1080px;margin:0 auto;display:grid;gap:22px}
+h1{font:600 clamp(28px,4vw,38px)/1.1 "IBM Plex Sans Condensed","IBM Plex Sans",sans-serif;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.lede{color:var(--muted);max-width:68ch;margin:6px 0 0}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;color:var(--muted);font-size:13px;align-items:center}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line);padding-bottom:10px}
+.tab{font:500 14px "IBM Plex Sans",sans-serif;border:1px solid var(--line);background:var(--panel);color:var(--ink);padding:7px 12px;border-radius:6px;cursor:pointer}
+.tab[aria-selected="true"]{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.tab:focus-visible,.row:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tab .n{font:12px "IBM Plex Mono",monospace;opacity:.75;margin-left:6px}
+.list{display:grid;gap:10px}
+details.ds{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+details.ds[open]{border-color:var(--accent)}
+summary.row{list-style:none;cursor:pointer;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr) auto;gap:6px 16px;padding:12px 14px;align-items:center}
+summary.row::-webkit-details-marker{display:none}
+.name{font-weight:600;overflow-wrap:anywhere}
+.src{font:12.5px "IBM Plex Mono",monospace;color:var(--muted);overflow-wrap:anywhere}
+.meta{font-size:13px;color:var(--muted);overflow-wrap:anywhere}
+.chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.chip{font:500 11.5px "IBM Plex Sans",sans-serif;letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.c-ok{background:var(--ok-bg);color:var(--ok)} .c-warn{background:var(--warn-bg);color:var(--warn)} .c-bad{background:var(--bad-bg);color:var(--bad)} .c-new{background:var(--accent-soft);color:var(--accent)}
+@media (max-width:700px){summary.row{grid-template-columns:1fr}.chips{justify-content:flex-start}}
+.body{border-top:1px solid var(--line);padding:14px;display:grid;gap:14px}
+.facts{display:grid;grid-template-columns:max-content 1fr;gap:4px 14px;font-size:13.5px}
+.facts dt{color:var(--muted)} .facts dd{margin:0;overflow-wrap:anywhere}
+.io{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+h3{font:600 12px "IBM Plex Sans",sans-serif;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 6px}
+pre{margin:0;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:10px 12px;font:12.5px/1.5 "IBM Plex Mono",monospace;overflow:auto;max-height:420px;white-space:pre-wrap;overflow-wrap:anywhere}
+.tk{color:var(--token);background:var(--token-bg);border-radius:3px;padding:0 2px}
+.out{display:grid;gap:6px}
+.lab{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:13.5px;align-items:baseline;border-bottom:1px dashed var(--line);padding-bottom:6px}
+.lab .k{font:500 11px "IBM Plex Mono",monospace;padding:1px 6px;border-radius:4px;background:var(--accent-soft);color:var(--accent)}
+.lab .v{overflow-wrap:anywhere}
+.lab .v b{font-variant-numeric:tabular-nums}
+.none{color:var(--muted);font-style:italic}
+.flags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.fl{font:12px "IBM Plex Mono",monospace;padding:1px 6px;border-radius:4px;background:var(--code);color:var(--muted)}
+.fl.t{background:var(--ok-bg);color:var(--ok);font-weight:500}
+.note{font-size:13.5px;background:var(--warn-bg);color:var(--ink);border-radius:6px;padding:8px 12px}
+.review-ok{background:var(--ok-bg)} .review-bad,.review-none{background:var(--bad-bg)}
+.empty{color:var(--muted);padding:20px;text-align:center;border:1px dashed var(--line);border-radius:8px}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>OpenJev Dataset Atlas</h1>
+    <p class="lede">Candidate training data for OpenJev, in four groups. Each entry has one real row from the dataset (checked 2026-09-17), the same row as an OpenJev request, and the training label. OpenJev uses the Jev API format: one state, named questions of type noul, choice, or score, and one flag token per option. Most option lists in these samples show the format only. Read the review on each entry before you write a converter.</p>
+  </header>
+  <div class="legend">
+    <span class="chip c-ok">usable</span> real row and real labels
+    <span class="chip c-warn">needs work</span> some options or labels were made up, or a label is missing
+    <span class="chip c-bad">not usable as is</span> label leak, config file only, or wrong data
+    <span class="chip c-new">newer</span> a 2025–2026 release
+  </div>
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+  <section class="list" id="list"></section>
+</div>
+
+<script>
+const GROUPS = /*GROUPS*/;
+const DATA = /*DATA*/;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function template(r){
+  const T = t => `<span class="tk">${esc(t)}</span>`;
+  let out = `${T("<|ctx|>")} ${esc(r.state)} ${T("<|/ctx|>")}\n`;
+  for (const [name, q] of Object.entries(r.questions)){
+    out += `${T("<|q|>")} ${esc(name)} ${T("<|instr|>")} ${esc(q.instructions || "")}\n`;
+    let opts = [];
+    if (q.type === "noul"){ const c = q.criteria || {};
+      opts = [`true${c.true ? ": " + c.true : ""}`, `false${c.false ? ": " + c.false : ""}`]; }
+    else if (q.type === "choice") opts = Object.entries(q.criteria).map(([k, v]) => v ? `${k}: ${v}` : k);
+    else opts = q.criteria.map((lv, i) => `${i}: ${lv}`);
+    opts.forEach(o => { out += `  ${T("<|opt|>")} ${esc(o)} ${T("<|flag|>")}\n`; });
+    out += `${T("<|conf|>")} ${T("<|/q|>")}\n`;
+  }
+  return out;
+}
+function labels(r){
+  return Object.entries(r.questions).map(([name, q]) => {
+    const y = r.answers ? r.answers[name] : null;
+    const v = (y === null || y === undefined) ? `<span class="none">no label (gives no loss)</span>`
+      : q.type === "score" ? `level <b>${y}</b> — ${esc(q.criteria[y])}`
+      : `<b>${esc(String(y))}</b>`;
+    return `<div class="lab"><span class="k">${q.type}</span><span class="v">${esc(name)} → ${v}</span></div>`;
+  }).join("") + `<div class="lab"><span class="k">out</span><span class="v">every answer also carries probabilities and a confidence 0–1, as in the Jev API</span></div>`;
+}
+function entry(r){
+  const chips = []; const rv = r.review || ["ok", ""];
+  const REV = {ok:["c-ok","usable"], warn:["c-warn","needs work"], bad:["c-bad","not usable as is"], none:["c-bad","no sample"]};
+  chips.push(`<span class="chip ${REV[rv[0]][0]}">${REV[rv[0]][1]}</span>`);
+  if (/newer|2025-2026|successor/i.test(r.name)) chips.push(`<span class="chip c-new">newer</span>`);
+  const o = r.openjev;
+  return `<details class="ds"><summary class="row" tabindex="0">
+    <div><div class="name">${esc(r.name)}</div><div class="src">${esc(r.id_or_url || "")}</div></div>
+    <div class="meta">${esc(r.size || "size unknown")} · ${esc(r.license || "license unknown")}</div>
+    <div class="chips">${chips.join("")}</div></summary>
+    <div class="body">
+      <dl class="facts"><dt>Latest version</dt><dd>${esc(r.latest_version || "—")}</dd><dt>Verified</dt><dd>${r.verified ? "yes" : "no"}</dd></dl>
+      ${rv[1] ? `<div class="note review-${rv[0]}"><b>Review:</b> ${esc(rv[1])}</div>` : ""}
+      ${r.note ? `<p class="meta"><b>Task note:</b> ${esc(r.note)}</p>` : ""}
+      <div class="io">
+        <div><h3>Raw row from the dataset</h3><pre>${r.raw_sample ? esc(JSON.stringify(r.raw_sample, null, 2)) : "No row. See the note."}</pre></div>
+        <div><h3>OpenJev input</h3><pre>${o ? template(o) : "No record."}</pre></div>
+      </div>
+      <div><h3>OpenJev output (labels)</h3><div class="out">${o ? labels(o) : `<span class="none">No record.</span>`}</div></div>
+    </div></details>`;
+}
+let current = GROUPS[0][0];
+try { const s = localStorage.getItem("atlas-tab"); if (s && DATA[s]) current = s; } catch(e){}
+function render(){
+  document.getElementById("tabs").innerHTML = GROUPS.map(([k, label]) =>
+    `<button class="tab" role="tab" id="tab-${k}" aria-selected="${k === current}" data-k="${k}">${esc(label)}<span class="n">${DATA[k].length}</span></button>`).join("");
+  const rows = DATA[current];
+  document.getElementById("list").innerHTML = rows.length ? rows.map(entry).join("") : `<div class="empty">No entries for this group yet.</div>`;
+}
+document.getElementById("tabs").addEventListener("click", e => {
+  const b = e.target.closest(".tab"); if (!b) return; current = b.dataset.k;
+  try { localStorage.setItem("atlas-tab", current); } catch(e){}
+  render();
+});
+render();
+</script>

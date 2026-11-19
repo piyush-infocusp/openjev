@@ -1,0 +1,613 @@
+[
+  {
+    "name": "Autocast",
+    "id_or_url": "andyzoujm/autocast (GitHub, canonical); mirror used: AlgoveraAI/autocast (HuggingFace)",
+    "latest_version": "Latest; no 2025-2026 successor dataset found (AutoCast++, arXiv 2310.01880, is a retrieval method built on top of Autocast, not a new dataset).",
+    "size": "autocast_questions.json ~188MB; autocast_competition_test_set.json ~2MB",
+    "license": "MIT (per GitHub repo LICENSE)",
+    "verified": true,
+    "raw_sample": {
+      "question": "Before 1 July 2021, will the Chilean government not pass legislation that caps administrative fees and/or operating profits of the country's pension fund managers?",
+      "id": "G1411",
+      "background": "Amid large-scale economic protests, calls for reform of Chile's pension system have grown. A constitutional amendment to the same effect would count. Legislation enabling or delegating new regulatory authority to cap administrative fees and/or operating profits would count.",
+      "publish_time": "2019-12-04 16:32:31.645000+00:00",
+      "close_time": "2021-07-01 07:01:27+00:00",
+      "tags": [
+        "Business",
+        "Finance",
+        "Non-US Politics"
+      ],
+      "choices": [
+        "yes",
+        "no"
+      ],
+      "qtype": "t/f"
+    },
+    "note": "Resolution/ground-truth label not included in the sampled question object; label left null. Official HF id 'andyzoujm/autocast' does not exist (404), used community mirror AlgoveraAI/autocast.",
+    "review": [
+      "warn",
+      "The resolved answer is in a separate field that was not fetched, so the label is empty."
+    ],
+    "openjev": {
+      "id": "autocast-G1411",
+      "source": "andyzoujm/autocast",
+      "domain": "strategy",
+      "state": "Forecasting question (Autocast, IFP-style). Before 1 July 2021, will the Chilean government not pass legislation that caps administrative fees and/or operating profits of the country's pension fund managers? Background: Amid large-scale economic protests, calls for reform of Chile's pension system have grown. A constitutional amendment to the same effect would count. Legislation enabling or delegating new regulatory authority to cap administrative fees and/or operating profits would count.",
+      "questions": {
+        "resolution": {
+          "type": "choice",
+          "instructions": "Forecast the resolution of this binary question.",
+          "criteria": {
+            "yes": "",
+            "no": ""
+          }
+        }
+      },
+      "answers": {
+        "resolution": null
+      }
+    }
+  },
+  {
+    "name": "ForecastBench",
+    "id_or_url": "forecastingresearch/forecastbench-datasets (GitHub + HuggingFace)",
+    "latest_version": "Latest; actively updated (nightly/bi-weekly), question set 2026-09-13.json fetched, repo pushed 2026-09-17 (today). A larger benchmark revision is planned by end of 2026 but not yet released.",
+    "size": "Dozens of bi-weekly question_sets JSON files, each with dozens of questions from Manifold, Metaculus, ACLED, etc.",
+    "license": "CC-BY-SA-4.0",
+    "verified": true,
+    "raw_sample": {
+      "id": "M0AYiQ14YgJvoX3ol0Dm",
+      "source": "manifold",
+      "question": "Will a video game released after 2023 be a top 10 best-selling game of all time, by EOY 2026?",
+      "market_info_close_datetime": "2027-01-01T04:59:00+00:00",
+      "freeze_datetime": "2026-09-03T00:00:00+00:00",
+      "freeze_datetime_value": "0.164948"
+    },
+    "note": "HF datasets-server row API failed (schema mismatch across shards, ArrowInvalid); raw sample was instead fetched from a raw question-set JSON file in the GitHub companion repo. Used the market-implied probability at freeze as the score label (a proxy, not a resolved ground truth). | Converted to the Jev format: score 'probability' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "The label is the market probability at the freeze date, not the resolved outcome. Use resolution files for the real target."
+    ],
+    "openjev": {
+      "id": "forecastbench-M0AYiQ14YgJvoX3ol0Dm",
+      "source": "forecastingresearch/forecastbench-datasets",
+      "domain": "strategy",
+      "state": "Forecasting question (ForecastBench, 2026-09-13 question set, source: Manifold market). Will a video game released after 2023 be a top 10 best-selling game of all time, by EOY 2026? Market freeze date 2026-09-03; market-implied probability at freeze: 0.164948.",
+      "questions": {
+        "probability": {
+          "type": "score",
+          "instructions": "Estimate the probability that this question resolves YES.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "probability": 0
+      }
+    }
+  },
+  {
+    "name": "Diplomacy Deception (Peskov et al. 2020 ACL)",
+    "id_or_url": "DenisPeskoff/2020_acl_diplomacy (GitHub), data/test.jsonl",
+    "latest_version": "Latest/canonical; still the standard reference. Follow-on work (Wongkamjan et al., ACL Findings 2025, counterfactual RL deception detection) reuses this same annotated corpus rather than releasing a new dataset.",
+    "size": "train.jsonl ~2.47MB, validation.jsonl ~246KB, test.jsonl ~490KB (17,289 messages across 12 games)",
+    "license": "CC-BY-4.0",
+    "verified": true,
+    "raw_sample": {
+      "messages": [
+        "Hi Italy! Just opening up communication, and I want to know what some of your initial thoughts on the game are and if/how we can work together"
+      ],
+      "sender_labels": [
+        true
+      ],
+      "receiver_labels": [
+        true
+      ],
+      "speakers": [
+        "germany"
+      ],
+      "receivers": [
+        "italy"
+      ],
+      "seasons": [
+        "Spring"
+      ],
+      "years": [
+        "1901"
+      ],
+      "game_score": [
+        "3"
+      ],
+      "game_score_delta": [
+        "0"
+      ],
+      "players": [
+        "italy",
+        "germany"
+      ],
+      "game_id": 12
+    },
+    "note": "sender_labels=true in the source data means truthful (self-labeled by sender); mapped true->option index 1 ('truthful').",
+    "review": [
+      "ok",
+      "Good fit. The labels are real."
+    ],
+    "openjev": {
+      "id": "diplomacy-deception-game12-msg0",
+      "source": "DenisPeskoff/2020_acl_diplomacy",
+      "domain": "strategy",
+      "state": "Diplomacy game 12, Spring 1901. Germany sends the following message to Italy: \"Hi Italy! Just opening up communication, and I want to know what some of your initial thoughts on the game are and if/how we can work together\". Germany's game score at the time: 3.",
+      "questions": {
+        "sender_intent": {
+          "type": "choice",
+          "instructions": "Classify whether the sender's message is truthful (sincere) or deceptive (a lie).",
+          "criteria": {
+            "deceptive": "",
+            "truthful": ""
+          }
+        }
+      },
+      "answers": {
+        "sender_intent": "truthful"
+      }
+    }
+  },
+  {
+    "name": "stanfordnlp/craigslist_bargains",
+    "id_or_url": "stanfordnlp/craigslist_bargains (HuggingFace); source data on CodaLab",
+    "latest_version": "Static/archival, 2018 paper (He et al., arXiv:1808.09637). No 2025-2026 successor found; CaSiNo (2021) is the closest 'improvement' dataset but is not a direct successor and is itself 2021.",
+    "size": "~6K+ negotiation dialogues (HF size category 1K<n<10K)",
+    "license": "unknown (HF tag license:unknown)",
+    "verified": true,
+    "raw_sample": {
+      "uuid": "C_fe3d143826f44a8db1072188f5345e8a",
+      "scenario": {
+        "category": "phone",
+        "post_id": "6149527852",
+        "kbs": [
+          {
+            "personal": {
+              "Bottomline": null,
+              "Role": "buyer",
+              "Target": 7
+            },
+            "item": {
+              "Category": "phone",
+              "Price": 10,
+              "Description": [
+                "Charge two devices simultaneously on the go. This vehicle charger with an additional USB port delivers enough power to charge two devices at once."
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "note": "HF datasets-server refused this dataset (legacy loading-script format); traced the loader to its true CodaLab source URL (worksheets.codalab.org bundle 0xd34bbbc5fb3b4fccbd19e10756ca8dd7) and fetched parsed.json directly. Outcome/price fields present in the fuller record were truncated in the fetched sample, so labels are left null. | Converted to the Jev format: score 'final_price' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "The sample is cut short, so the deal and price labels are empty. The full record has them."
+    ],
+    "openjev": {
+      "id": "craigslist-bargains-C_fe3d143826f44a8db1072188f5345e8a",
+      "source": "stanfordnlp/craigslist_bargains",
+      "domain": "strategy",
+      "state": "Craigslist negotiation scenario, category: phone. Item listed at $10: 'Charge two devices simultaneously on the go. This vehicle charger with an additional USB port delivers enough power to charge two devices at once. Auto Detect IC Technology automatically detects the device type.' Buyer's private target price: $7, no stated bottomline.",
+      "questions": {
+        "deal_reached": {
+          "type": "choice",
+          "instructions": "Predict whether the buyer and seller reach a deal, and at what price.",
+          "criteria": {
+            "no_deal": "",
+            "deal": ""
+          }
+        },
+        "final_price": {
+          "type": "score",
+          "instructions": "Predict whether the buyer and seller reach a deal, and at what price.",
+          "criteria": [
+            "0",
+            "up to 1",
+            "up to 10",
+            "up to 100",
+            "more than 100"
+          ]
+        }
+      },
+      "answers": {
+        "deal_reached": null,
+        "final_price": null
+      }
+    }
+  },
+  {
+    "name": "kchawla123/casino",
+    "id_or_url": "kchawla123/casino (HuggingFace)",
+    "latest_version": "Static/archival, 2021 (Chawla et al., NAACL 2021). Positions itself as improving on craigslist_bargains and deal_or_no_dialog; no further 2025-2026 successor found.",
+    "size": "1,030 dialogues total (confirmed via HF API num_rows_total)",
+    "license": "cc-by-4.0",
+    "verified": true,
+    "raw_sample": {
+      "chat_logs_excerpt": "Buyer: Hi! I need mostly firewood, how about you? Seller: Hi, I would like food and water most, I can give you all of my firewood. Buyer: That sounds great, I could use extra water too if possible!",
+      "participant_info": {
+        "mturk_agent_1": {
+          "value2issue": {
+            "Firewood": "High",
+            "Water": "Medium",
+            "Food": "Low"
+          },
+          "outcomes": {
+            "points_scored": 19,
+            "satisfaction": "Extremely satisfied"
+          }
+        },
+        "mturk_agent_2": {
+          "value2issue": {
+            "Water": "High",
+            "Food": "High",
+            "Firewood": "Low"
+          },
+          "outcomes": {
+            "points_scored": 18,
+            "satisfaction": "Satisfied"
+          }
+        }
+      },
+      "annotations_excerpt": [
+        [
+          "Hi! I need mostly firewood, how about you?",
+          "small-talk,elicit-pref"
+        ]
+      ]
+    },
+    "note": "This dataset's HF datasets-viewer worked natively (Parquet). Full record also includes Big-Five personality, SVO scores, and per-utterance strategy annotations, omitted here for brevity. | Converted to the Jev format: score 'agent1_points' bucketed into 5 ordered levels; score 'agent2_points' bucketed into 5 ordered levels.",
+    "review": [
+      "ok",
+      "Good fit. The point scores are real."
+    ],
+    "openjev": {
+      "id": "casino-dialogue-0",
+      "source": "kchawla123/casino",
+      "domain": "strategy",
+      "state": "Campsite negotiation (CaSiNo) between two participants dividing Firewood, Water, and Food packages. Agent 1 priorities: Firewood=High, Water=Medium, Food=Low. Agent 2 priorities: Water=High, Food=High, Firewood=Low. Dialogue opens: 'Hi! I need mostly firewood, how about you?' -> 'Hi, I would like food and water most, I can give you all of my firewood.' -> 'That sounds great, I could use extra water too if possible!'",
+      "questions": {
+        "agent1_points": {
+          "type": "score",
+          "instructions": "Predict each participant's final negotiation outcome (points scored, out of a max per-issue allocation).",
+          "criteria": [
+            "0 to 6",
+            "6 to 12",
+            "12 to 18",
+            "18 to 24",
+            "24 to 30"
+          ]
+        },
+        "agent2_points": {
+          "type": "score",
+          "instructions": "Predict each participant's final negotiation outcome (points scored, out of a max per-issue allocation).",
+          "criteria": [
+            "0 to 6",
+            "6 to 12",
+            "12 to 18",
+            "18 to 24",
+            "24 to 30"
+          ]
+        }
+      },
+      "answers": {
+        "agent1_points": 3,
+        "agent2_points": 2
+      }
+    }
+  },
+  {
+    "name": "mikelewis0/deal_or_no_dialog",
+    "id_or_url": "mikelewis0/deal_or_no_dialog (HuggingFace); source: facebookresearch/end-to-end-negotiator (GitHub)",
+    "latest_version": "Static/archival, 2017 (Lewis et al., arXiv:1706.05125). No direct 2025-2026 successor; CaSiNo (2021) is the field's next notable dataset.",
+    "size": "10K<n<100K (HF size category); ~5,808 dialogues in the 'dialogues' config",
+    "license": "cc-by-4.0",
+    "verified": true,
+    "raw_sample": {
+      "input": "1 4 4 1 1 2",
+      "dialogue": "THEM: i would like 4 hats and you can have the rest . <eos> YOU: deal <eos> THEM: <selection>",
+      "output": "item0=1 item1=0 item2=1 item0=0 item1=4 item2=0",
+      "partner_input": "1 0 4 2 1 2"
+    },
+    "note": "HF datasets-server refused this dataset too; fetched real first example line directly from the GitHub source's train.txt. Agent's output allocation item0=1,item1=0,item2=1 sums to 2 items received (used as items_received_count). | Converted to the Jev format: score 'items_received_count' bucketed into 5 ordered levels.",
+    "review": [
+      "ok",
+      "The labels are real. The dialogue already shows 'deal', so predict from an earlier turn."
+    ],
+    "openjev": {
+      "id": "deal-or-no-dialog-train-0",
+      "source": "mikelewis0/deal_or_no_dialog",
+      "domain": "strategy",
+      "state": "Multi-issue bargaining over 3 item types (books, hats, balls). Agent's private counts/values: book=1(val1), hat=4(val4), ball=1(val1); (count,value pairs: 1 4 4 1 1 2). Dialogue: THEM: 'i would like 4 hats and you can have the rest.' YOU: 'deal'. THEM: <selection>.",
+      "questions": {
+        "agreement": {
+          "type": "choice",
+          "instructions": "Predict whether the negotiation ends in agreement, and the agent's final item allocation (books, hats, balls).",
+          "criteria": {
+            "no_agreement": "",
+            "agreement": ""
+          }
+        },
+        "items_received_count": {
+          "type": "score",
+          "instructions": "Predict whether the negotiation ends in agreement, and the agent's final item allocation (books, hats, balls).",
+          "criteria": [
+            "0 to 2",
+            "2 to 4",
+            "4 to 6",
+            "6 to 8",
+            "8 to 10"
+          ]
+        }
+      },
+      "answers": {
+        "agreement": "agreement",
+        "items_received_count": 0
+      }
+    }
+  },
+  {
+    "name": "GTBench",
+    "id_or_url": "jinhaoduan/GTBench (GitHub)",
+    "latest_version": "Confirmed current repo, paper NeurIPS 2024 (arXiv:2402.12348). No newer official successor under this name; adjacent but distinct 2025-2026 benchmarks exist (GameBench, LLM-Game-Benchmark) - not the same project.",
+    "size": "Code framework covering 10 games (Tic-Tac-Toe, Connect-4, Kuhn Poker, Breakthrough, Liar's Dice, first-price sealed auction, Negotiation, Nim, Pig, Iterated Prisoner's Dilemma); not a fixed-row dataset",
+    "license": "unknown (LICENSE file present in repo but content not read)",
+    "verified": true,
+    "raw_sample": {
+      "file": "gamingbench/configs/game_configs/negotiation.yaml",
+      "content": "game_name: Negotiation"
+    },
+    "note": "GTBench is an LLM-vs-LLM game-playing harness, not a static labeled dataset; raw_sample is a real YAML config file rather than a data row (no single canonical 'example row' exists). game index 6 corresponds to 'negotiation' in the listed options order.",
+    "review": [
+      "bad",
+      "The sample is a config file, not a decision. You must run the games to get data."
+    ],
+    "openjev": {
+      "id": "gtbench-negotiation-config",
+      "source": "jinhaoduan/GTBench",
+      "domain": "strategy",
+      "state": "GTBench game-theoretic LLM evaluation harness: Negotiation game configuration. GTBench pits LLM agents against each other or scripted opponents across 10 canonical game-theory games (complete/incomplete information, static/dynamic) to evaluate strategic reasoning.",
+      "questions": {
+        "game": {
+          "type": "choice",
+          "instructions": "Select which game-theoretic game this evaluation instance is configured to run.",
+          "criteria": {
+            "tictactoe": "",
+            "connect4": "",
+            "kuhn_poker": "",
+            "breakthrough": "",
+            "liars_dice": "",
+            "first_sealed_auction": "",
+            "negotiation": "",
+            "nim": "",
+            "pig": "",
+            "prisoners_dilemma": ""
+          }
+        }
+      },
+      "answers": {
+        "game": "negotiation"
+      }
+    }
+  },
+  {
+    "name": "TextStarCraft II",
+    "id_or_url": "histmeisah/Large-Language-Models-play-StarCraftII (GitHub)",
+    "latest_version": "Repo last pushed 2025-04-25. Direct successor: SC2Arena (arXiv:2508.10428, 2025) extends it with full-length contexts and full action space. Broader successor: DSGBench (see below).",
+    "size": "unknown; live game environment/code repo, not a static corpus",
+    "license": "none found (no LICENSE file in repo root)",
+    "verified": true,
+    "raw_sample": {
+      "file": "sc2_rl_agent/starcraftenv_test/prompt/prompt.py",
+      "content_excerpt": "You are an AI trained in analyzing and summarizing StarCraft II games... 1. Information Overview... 2. Current Game Stage... 3. Our Current Strategy... 4. Enemy's Strategy... 5. Key Information... Finally, make {K} decisions from action_dict based on the current situation..."
+    },
+    "note": "Repo is code/prompt templates, not a static labeled action dataset; ground-truth action left null. action option set is a representative summary of typical StarCraft II macro decisions, not verbatim from the repo's action_dict.",
+    "review": [
+      "bad",
+      "The sample is a prompt template. The action options were made up and there is no label."
+    ],
+    "openjev": {
+      "id": "textstarcraft2-prompt-sample",
+      "source": "histmeisah/Large-Language-Models-play-StarCraftII",
+      "domain": "strategy",
+      "state": "TextStarCraft II LLM agent prompt: the agent is given a game-state summary (resources, unit counts, tech, enemy scouting info) and asked to choose K actions from a discrete action_dict covering build orders, unit production, and military commands, given the current game stage and own/enemy strategy summaries.",
+      "questions": {
+        "action": {
+          "type": "choice",
+          "instructions": "Select the next macro-level action for the StarCraft II agent to take.",
+          "criteria": {
+            "build_worker": "",
+            "build_structure": "",
+            "train_army": "",
+            "expand_base": "",
+            "attack": "",
+            "defend": "",
+            "scout": "",
+            "tech_up": ""
+          }
+        }
+      },
+      "answers": {
+        "action": null
+      }
+    }
+  },
+  {
+    "name": "CivRealm",
+    "id_or_url": "bigai-ai/civrealm (GitHub, branch: dev)",
+    "latest_version": "Actively maintained; no standalone newer major-version repo found under bigai-ai as of 2026-09-17. DSGBench (below) incorporates Civ-style scenarios as part of a broader multi-game benchmark.",
+    "size": "unknown; configurable max_turns (default 1000), multiple maps/scenarios",
+    "license": "GPL-3.0",
+    "verified": true,
+    "raw_sample": {
+      "file": "src/civrealm/configs/default_settings.yaml",
+      "content": "username: myagent\nmax_turns: 1000\nservice: freeciv-web\nhost: localhost\nclient_port: 6001\nmultiplayer_game: True\nhotseat_game: False\nwait_for_observer: False\nserver_timeout: 30"
+    },
+    "note": "Repo is a live game-environment codebase (config file, not a labeled decision dataset); label left null.",
+    "review": [
+      "bad",
+      "The sample is a config file. The options were made up and there is no label."
+    ],
+    "openjev": {
+      "id": "civrealm-default-config",
+      "source": "bigai-ai/civrealm",
+      "domain": "strategy",
+      "state": "CivRealm: an interactive Freeciv (Civilization-inspired strategy game) environment for LLM/RL agents. Default session settings: multiplayer game, hotseat disabled, max_turns=1000, connecting as 'myagent' to a local freeciv-web service.",
+      "questions": {
+        "strategic_focus": {
+          "type": "choice",
+          "instructions": "Select the agent's high-level strategic focus for the current civilization turn.",
+          "criteria": {
+            "military_expansion": "",
+            "economic_growth": "",
+            "diplomacy": "",
+            "technology": "",
+            "settlement_expansion": ""
+          }
+        }
+      },
+      "answers": {
+        "strategic_focus": null
+      }
+    }
+  },
+  {
+    "name": "WarAgent",
+    "id_or_url": "agiresearch/WarAgent (GitHub)",
+    "latest_version": "No newer major version found under agiresearch org for this project as of 2026-09-17.",
+    "size": "simulation_data/ contains 8 log files (WWI, WWII, 'WS' scenario) across claude2, gpt-3.5, gpt-4",
+    "license": "Apache-2.0",
+    "verified": true,
+    "raw_sample": {
+      "file": "simulation_data/gpt4_WWII.log",
+      "content_excerpt": "Trigger: Country G invaded Country F. Day 1. Germany: To Japan: Germany has chosen to Request Military Alliance to Japan. Germany has chosen to General Mobilization. To Hungary: ... Japan: To Germany: Japan has chosen to Request Military Alliance to Germany..."
+    },
+    "note": "Label derived directly from the observed log line where Japan chose 'Request Military Alliance to Germany' -> option index 1.",
+    "review": [
+      "warn",
+      "The label comes from a log line, but LLM agents made these decisions. Use as synthetic data only."
+    ],
+    "openjev": {
+      "id": "waragent-gpt4-wwii-day1",
+      "source": "agiresearch/WarAgent",
+      "domain": "strategy",
+      "state": "WarAgent multi-agent LLM world-war simulation, WWII scenario, GPT-4 agents, Day 1. Trigger event: Country G (Germany) invaded Country F (France). Germany sends a diplomatic message to Japan: 'Germany has chosen to Request Military Alliance to Japan. Germany has chosen to General Mobilization.' Japan responds: 'Japan has chosen to Request Military Alliance to Germany.'",
+      "questions": {
+        "japan_action": {
+          "type": "choice",
+          "instructions": "Select Japan's diplomatic/military action in response to Germany's request.",
+          "criteria": {
+            "reject_alliance": "",
+            "request_military_alliance": "",
+            "declare_neutrality": "",
+            "declare_war": ""
+          }
+        }
+      },
+      "answers": {
+        "japan_action": "request_military_alliance"
+      }
+    }
+  },
+  {
+    "name": "CDB90",
+    "id_or_url": "jrnold/CDB90 (GitHub), data/battles.csv",
+    "latest_version": "NOT the latest/cleanest version. A newer, cleaned successor exists: lifelike/CDB13 ('Revised, cleaned, and packaged version of the CDB90 battle dataset'). No 2025/2026-dated release of either found.",
+    "size": "repo ~1.7MB; battles.csv 192,722 bytes (~48 columns)",
+    "license": "unknown (no LICENSE file in repo; underlying data from U.S. Army CAA CDB90 database, likely public domain but unconfirmed)",
+    "verified": true,
+    "raw_sample": {
+      "version": "9.0.3",
+      "isqno": 1,
+      "war": "NETHERLAND'S WAR OF INDEPENDENCE",
+      "name": "NIEUPORT",
+      "locn": "SPANISH FLANDERS",
+      "campgn": "NIEUPORT 1600",
+      "is_hero": 1,
+      "war_initiator": 0,
+      "dbpedia": "http://dbpedia.org/resource/Battle_of_Nieuwpoort"
+    },
+    "note": "The fetched row's win/outcome-coded column ('wina') was truncated from the sample and not confirmed, so winner label left null rather than guessed.",
+    "review": [
+      "warn",
+      "The winner column was not fetched, so the label is empty. The newer cleaned version is CDB13."
+    ],
+    "openjev": {
+      "id": "cdb90-battle-1-nieuport",
+      "source": "jrnold/CDB90",
+      "domain": "strategy",
+      "state": "Historical battle record (CDB90 database v9.0.3): Battle of Nieuport, Netherlands' War of Independence, fought in Spanish Flanders as part of the 1600 Nieuport campaign. Recorded as a 'hero' (well-documented) battle; attacker/defender was not the war initiator in this engagement.",
+      "questions": {
+        "winner": {
+          "type": "choice",
+          "instructions": "Predict which side won the battle.",
+          "criteria": {
+            "attacker": "",
+            "defender": "",
+            "draw": ""
+          }
+        }
+      },
+      "answers": {
+        "winner": null
+      }
+    }
+  },
+  {
+    "name": "DSGBench (Diverse Strategic Game Benchmark) - 2025-2026 successor",
+    "id_or_url": "DeciBrain-Group/DSGBench (GitHub); arXiv:2503.06047",
+    "latest_version": "Newer dataset (2025-2026). Actively maintained, last pushed 2026-05-05. Unified benchmark superset covering StarCraft II, CivRealm-style Civ scenarios, Werewolf, Stratego, Street Fighter III, and Welfare Diplomacy, evaluated across GPT-4o, DeepSeek-V2.5, Gemini-1.5-flash, Llama-3.1, o1-mini, Qwen-2.5.",
+    "size": "100+ YAML eval-config files spanning 6 games x multiple scenes x ~9 LLMs",
+    "license": "MIT",
+    "verified": true,
+    "raw_sample": {
+      "file": "configs/eval_configs/eval_GPT-4o_starcraft2_scene1_agent_vs_computer_macro_asyFalse.yaml",
+      "content": "game:\n  game_name: AgentVSComputerStarcraftEnv\n  game_map: Ancient Cistern LE\n  players: Protoss_VS_Protoss\n  game_difficulty: medium\n  game_ai_build: macro\n  asynch_mode: false\nagent:\n- agent_name: GPTAgent\n  agent_model: LLMModel\n  agent_model_config: GPT-4o.yaml\n  agent_prompt: StarCraftIIPrompt_V4\neval:\n  num_matches: 5"
+    },
+    "note": "Config file only (no logged match outcome fetched); labels left null. Included as the primary verified newer (2025-2026) strategic-decision dataset; two other 2025-2026 candidates (FutureEval, WARBENCH/SC2Arena repos) were surfaced by web search but could not be curl-verified within budget, so they are omitted rather than guessed. | Converted to the Jev format: score 'win_rate' bucketed into 5 ordered levels.",
+    "review": [
+      "bad",
+      "The sample is a config file with no match result. Run the benchmark to get data."
+    ],
+    "openjev": {
+      "id": "dsgbench-starcraft2-scene1-gpt4o",
+      "source": "DeciBrain-Group/DSGBench",
+      "domain": "strategy",
+      "state": "DSGBench evaluation config: GPT-4o agent vs. computer AI in StarCraft II, map 'Ancient Cistern LE', Protoss vs Protoss, medium difficulty, macro-level build strategy, 5 matches scheduled.",
+      "questions": {
+        "match_result": {
+          "type": "choice",
+          "instructions": "Predict whether the GPT-4o agent wins the match against the built-in AI.",
+          "criteria": {
+            "loss": "",
+            "win": "",
+            "draw": ""
+          }
+        },
+        "win_rate": {
+          "type": "score",
+          "instructions": "Predict whether the GPT-4o agent wins the match against the built-in AI.",
+          "criteria": [
+            "0 to 0.2",
+            "0.2 to 0.4",
+            "0.4 to 0.6",
+            "0.6 to 0.8",
+            "0.8 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "match_result": null,
+        "win_rate": null
+      }
+    }
+  }
+]

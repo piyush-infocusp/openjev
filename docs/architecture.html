@@ -1,0 +1,461 @@
+<title>OpenJev Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column; wide diagrams scroll in their own box; tabs switch before/after views */
+:root{
+  --bg:#f5f7f6; --surface:#ffffff; --fg:#17201d; --muted:#5a6863; --line:#d6dedb;
+  --accent:#0f7a6c; --accent-soft:#dcefeb; --warm:#b4561f; --warm-soft:#f6e5da;
+  --new:#1f6fb4; --new-soft:#dde9f5; --code:#eef2f1;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Manrope", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#101614; --surface:#172020; --fg:#e4ece9; --muted:#9aaba5; --line:#2c3935;
+  --accent:#4cc3b0; --accent-soft:#16332e; --warm:#f0995f; --warm-soft:#3a2518;
+  --new:#6fb1ec; --new-soft:#162a3d; --code:#1c2826; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101614; --surface:#172020; --fg:#e4ece9; --muted:#9aaba5; --line:#2c3935;
+  --accent:#4cc3b0; --accent-soft:#16332e; --warm:#f0995f; --warm-soft:#3a2518;
+  --new:#6fb1ec; --new-soft:#162a3d; --code:#1c2826; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--f-body);margin:0}
+.wrap{max-width:980px;margin:0 auto;padding-inline:20px;padding-block:40px 80px;display:grid;gap:48px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,44px)}
+h2{font-size:26px}
+h3{font-size:17px}
+p{margin:0;max-width:68ch}
+.eyebrow{font:500 12px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+.lead{color:var(--muted);font-size:17px}
+section{display:grid;gap:18px}
+code,.mono{font-family:var(--f-mono);font-size:.88em}
+code{background:var(--code);padding:1px 5px;border-radius:4px}
+.hero{display:grid;gap:14px}
+.facts{display:flex;flex-wrap:wrap;gap:10px}
+.fact{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:10px 14px;display:grid;gap:2px;min-width:0}
+.fact b{font:600 20px/1.2 var(--f-display);font-variant-numeric:tabular-nums}
+.fact span{font-size:12.5px;color:var(--muted)}
+.diagram{overflow-x:auto;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:16px}
+.diagram svg{display:block;min-width:760px;width:100%;height:auto}
+svg text{font-family:var(--f-body);fill:var(--fg)}
+svg .small{font-size:11px;fill:var(--muted)}
+svg .mono{font-family:var(--f-mono);font-size:11px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tabs button{font:600 13px var(--f-body);color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:999px;padding:6px 14px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+.tabs button:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+.tbl{overflow-x:auto}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:600 12px var(--f-mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.chip{display:inline-block;font:600 11px var(--f-mono);padding:2px 8px;border-radius:999px;white-space:nowrap}
+.chip.new{background:var(--new-soft);color:var(--new)}
+.chip.fix{background:var(--warm-soft);color:var(--warm)}
+.chip.keep{background:var(--accent-soft);color:var(--accent)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.panel{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:18px;display:grid;gap:10px;min-width:0}
+.panel ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.formula{font-family:var(--f-mono);font-size:13.5px;background:var(--code);border-radius:8px;padding:14px;overflow-x:auto;white-space:pre;line-height:1.7}
+.note{border-left:3px solid var(--warm);padding:4px 0 4px 14px;color:var(--muted)}
+details{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:10px 14px}
+summary{cursor:pointer;font-weight:600}
+details > div{padding-top:10px;display:grid;gap:8px}
+footer{color:var(--muted);font-size:13px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="eyebrow">OpenJev · architecture changes · 2026-09</div>
+  <h1>From a toy causal encoder to a sub-1B calibrated System One</h1>
+  <p class="lead">This page shows what changed in OpenJev: the base model, the data pipeline, the training stages and the server. The public request and answer format did not change. It follows the Jev API exactly.</p>
+  <div class="facts">
+    <div class="fact"><b>596.0M</b><span>dense Qwen3-0.6B</span></div>
+    <div class="fact"><b>822.6M</b><span>MoE option, total</span></div>
+    <div class="fact"><b>8</b><span>data sources</span></div>
+    <div class="fact"><b>~403k</b><span>train rows</span></div>
+    <div class="fact"><b>145</b><span>tests pass (CPU)</span></div>
+  </div>
+</header>
+
+<section id="flow">
+  <div class="eyebrow">1 · One forward pass</div>
+  <h2>How a request becomes calibrated answers</h2>
+  <p>The model is a decoder LLM that keeps its causal mask and does not generate text. The state comes first. Each question and its options come after it, so every <code>&lt;|flag|&gt;</code> token can see the whole state. One linear head reads a logit at each flag. A softmax over the flags of one question gives its probabilities.</p>
+  <div class="diagram" role="img" aria-label="Request flows through template encoder, Qwen3 backbone, flag head, softmax with temperature, and Jev answers">
+  <svg viewBox="0 0 900 250">
+    <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="var(--muted)"/></marker></defs>
+    <g stroke="var(--line)" stroke-width="1.5">
+      <rect x="10" y="70" width="140" height="110" rx="8" fill="var(--surface)"/>
+      <rect x="190" y="70" width="150" height="110" rx="8" fill="var(--surface)"/>
+      <rect x="380" y="50" width="170" height="150" rx="8" fill="var(--accent-soft)" stroke="var(--accent)"/>
+      <rect x="590" y="70" width="130" height="110" rx="8" fill="var(--surface)"/>
+      <rect x="760" y="70" width="130" height="110" rx="8" fill="var(--surface)"/>
+    </g>
+    <g stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)">
+      <line x1="150" y1="125" x2="186" y2="125"/><line x1="340" y1="125" x2="376" y2="125"/>
+      <line x1="550" y1="125" x2="586" y2="125"/><line x1="720" y1="125" x2="756" y2="125"/>
+    </g>
+    <text x="80" y="100" text-anchor="middle" font-weight="700">Jev request</text>
+    <text x="80" y="122" text-anchor="middle" class="mono">state</text>
+    <text x="80" y="140" text-anchor="middle" class="mono">questions{}</text>
+    <text x="80" y="162" text-anchor="middle" class="small">noul · choice · score</text>
+    <text x="265" y="100" text-anchor="middle" font-weight="700">Template encode</text>
+    <text x="265" y="122" text-anchor="middle" class="mono">ctx … /ctx</text>
+    <text x="265" y="140" text-anchor="middle" class="mono">q instr opt flag</text>
+    <text x="265" y="162" text-anchor="middle" class="small">7 tokens, spare rows</text>
+    <text x="465" y="80" text-anchor="middle" font-weight="700">Qwen3-0.6B</text>
+    <text x="465" y="100" text-anchor="middle" class="small">causal mask kept</text>
+    <text x="465" y="130" text-anchor="middle" class="small">28 layers · 1024 hidden</text>
+    <text x="465" y="160" text-anchor="middle" class="small">option: MoE in last 8</text>
+    <text x="465" y="178" text-anchor="middle" class="small">4 experts, top-1</text>
+    <text x="655" y="100" text-anchor="middle" font-weight="700">Flag head</text>
+    <text x="655" y="122" text-anchor="middle" class="mono">Linear(h, 1)</text>
+    <text x="655" y="140" text-anchor="middle" class="small">one gather for</text>
+    <text x="655" y="156" text-anchor="middle" class="small">all flags in batch</text>
+    <text x="825" y="100" text-anchor="middle" font-weight="700">Answers</text>
+    <text x="825" y="122" text-anchor="middle" class="mono">softmax(z / T)</text>
+    <text x="825" y="140" text-anchor="middle" class="small">T per question type</text>
+    <text x="825" y="156" text-anchor="middle" class="small">Jev keys only</text>
+    <text x="450" y="235" text-anchor="middle" class="small">All questions are answered in one forward pass. Confidence is computed from p, as Jev does: (n·p_max − 1)/(n − 1).</text>
+  </svg>
+  </div>
+</section>
+
+<section id="heads">
+  <div class="eyebrow">2 · The heads</div>
+  <h2>How one head gives noul, choice and score answers</h2>
+  <p>OpenJev has one small head: <code>flag_head = Linear(1024 → 1)</code>. The template puts one <code>&lt;|flag|&gt;</code> token after each option text. The head reads the last hidden state at each flag and gives one number, a logit <i>z</i>. The question type does not change the head. It changes only how many flags there are, and how the logits of one question become the answer.</p>
+  <div class="diagram" role="img" aria-label="Token template with flag positions for each question type">
+  <svg viewBox="0 0 900 205">
+    <g font-size="12">
+      <text x="10" y="24" font-weight="700">Template (what the backbone reads, left to right)</text>
+      <g class="mono">
+        <rect x="10" y="36" width="170" height="26" rx="4" fill="var(--code)"/><text x="18" y="54">&lt;|ctx|&gt; state &lt;|/ctx|&gt;</text>
+        <rect x="186" y="36" width="140" height="26" rx="4" fill="var(--code)"/><text x="194" y="54">&lt;|q|&gt; name &lt;|instr|&gt;</text>
+        <rect x="332" y="36" width="120" height="26" rx="4" fill="var(--code)"/><text x="340" y="54">&lt;|opt|&gt; true: …</text>
+        <rect x="456" y="36" width="54" height="26" rx="4" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="462" y="54">flag</text>
+        <rect x="514" y="36" width="120" height="26" rx="4" fill="var(--code)"/><text x="522" y="54">&lt;|opt|&gt; false: …</text>
+        <rect x="638" y="36" width="54" height="26" rx="4" fill="var(--accent-soft)" stroke="var(--accent)"/><text x="644" y="54">flag</text>
+        <rect x="696" y="36" width="70" height="26" rx="4" fill="var(--code)"/><text x="704" y="54">&lt;|/q|&gt;</text>
+        <text x="776" y="54">next q …</text>
+      </g>
+      <line x1="483" y1="62" x2="483" y2="92" stroke="var(--accent)" marker-end="url(#ar)"/>
+      <line x1="665" y1="62" x2="665" y2="92" stroke="var(--accent)" marker-end="url(#ar)"/>
+      <text x="483" y="108" text-anchor="middle" class="mono">z_true</text>
+      <text x="665" y="108" text-anchor="middle" class="mono">z_false</text>
+      <text x="10" y="140">noul → 2 flags (true, false)</text>
+      <text x="10" y="160">choice → 1 flag per option (2 to 255)</text>
+      <text x="10" y="180">score → 1 flag per level (2 or more, ordered)</text>
+      <text x="420" y="140" class="small">Causal mask: each flag sees the state, the instructions and its own option text.</text>
+      <text x="420" y="160" class="small">It cannot see later options, so option order can matter. The shuffle twin in RLCD</text>
+      <text x="420" y="180" class="small">and random option order in the data train this effect away.</text>
+    </g>
+  </svg>
+  </div>
+
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Type</th><th>Flags</th><th>From logits to answer</th><th>Answer fields</th><th>Training loss</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>noul</b></td><td class="num">2</td>
+        <td><code>p = softmax([z_true, z_false] / T)</code><br><code>noul = p[0]</code><br>Same as sigmoid((z_true − z_false)/T).</td>
+        <td><code>{"type","noul"}</code><br>No confidence field, as in Jev.</td>
+        <td>Cross-entropy on the 2 flags (binary log loss). Brier and focal are options.</td>
+      </tr>
+      <tr>
+        <td><b>choice</b></td><td class="num">n options</td>
+        <td><code>p = softmax(z / T)</code><br><code>choice = argmax p</code><br><code>confidence = (n·p_max − 1)/(n − 1)</code></td>
+        <td><code>{"type","choice","probabilities","confidence"}</code><br>probabilities keyed by option name.</td>
+        <td>Cross-entropy over the options. Optional label smoothing.</td>
+      </tr>
+      <tr>
+        <td><b>score</b></td><td class="num">n levels</td>
+        <td><code>p = softmax(z / T)</code><br><code>score = Σ k·p[k]</code> (expected level)<br><code>confidence = (n·p_max − 1)/(n − 1)</code></td>
+        <td><code>{"type","score","legend","probabilities","confidence"}</code><br>keys "0", "1", … and a legend of level names.</td>
+        <td>Cross-entropy + squared EMD: Σ (CDF_p(k) − CDF_target(k))². A near miss costs less than a far miss.</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Worked examples (values from the real <code>answer()</code> code)</h3>
+  <div class="grid2">
+    <div class="panel">
+      <h3>noul: is_urgent</h3>
+      <div class="formula">z = [1.2, −0.8]     (true, false)
+p = softmax(z) = [0.881, 0.119]
+answer: {"type":"noul","noul":0.881}</div>
+    </div>
+    <div class="panel">
+      <h3>choice: department</h3>
+      <div class="formula">z = [2.0, 0.5, −1.0]  billing, tech, sales
+p = [0.786, 0.175, 0.039]
+choice = "billing"
+confidence = (3·0.786 − 1)/2 = 0.678</div>
+    </div>
+    <div class="panel">
+      <h3>score: mood (Calm … Furious)</h3>
+      <div class="formula">z = [−1.0, 0.5, 1.5, 0.0]
+p = [0.049, 0.220, 0.598, 0.133]
+score = 0·0.049 + 1·0.220
+      + 2·0.598 + 3·0.133 = 1.815
+confidence = (4·0.598 − 1)/3 = 0.464</div>
+    </div>
+    <div class="panel">
+      <h3>Temperature after training</h3>
+      <div class="formula">choice, T = 1.5:
+p = softmax(z / 1.5)
+  = [0.665, 0.245, 0.090]
+confidence 0.678 → 0.498</div>
+      <p style="font-size:13.5px;color:var(--muted)">T &gt; 1 softens an overconfident model. T is fitted on val data for each type and does not change the chosen answer.</p>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Score loss: why EMD is added</h3>
+    <p>For the score example above, the loss with the correct level 2 is 0.51 (CE) and 0.61 (CE + EMD). If the correct level were 0, CE alone gives 3.01, but CE + EMD gives 4.47. The EMD term adds more loss when the probability mass is far from the correct level on the ordered scale. Plain CE sees only the probability of the correct level.</p>
+  </div>
+  <p class="note">Why one shared head and a softmax over flags: every option is scored by the same weights from its own text, so the model handles options that it never saw in training (new intents, new moves). The softmax makes the flags of one question compete, so the loss is a proper scoring rule and the probabilities can match the real rates.</p>
+</section>
+
+<section id="decisions">
+  <div class="eyebrow">3 · Decisions</div>
+  <h2>Architecture decisions</h2>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>#</th><th>Decision</th><th>Options we compared</th><th>Why this one</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td class="num">D1</td><td>Keep the causal mask (decoder, not bidirectional)</td><td>Bidirectional attention; encoder models (BERT style)</td><td>Jev is a causal encoder. The pretrained weights expect a causal mask. The state comes first, so every flag sees all of it.</td><td>A flag cannot see later options. Shuffled option order and the shuffle twin handle this.</td></tr>
+      <tr><td class="num">D2</td><td>One logit per flag token, shared head for all types</td><td>A separate classifier per type; fixed label vocabularies; generating the answer text</td><td>Options come from text, so any option set works (2 to 255). One forward pass answers all questions.</td><td>Long option lists make long inputs (clinc150: 150 options).</td></tr>
+      <tr><td class="num">D3</td><td>Softmax over the flags of one question</td><td>Independent sigmoid per flag</td><td>Probabilities sum to 1, as Jev answers do. CE on a softmax is a proper scoring rule.</td><td>Several true options at once need one noul per option (a Jev rule).</td></tr>
+      <tr><td class="num">D4</td><td>Confidence computed, not predicted</td><td>A second head for confidence</td><td>Jev computes it from p. No second head can drift away from the probabilities.</td><td>Confidence is only as good as the calibration of p.</td></tr>
+      <tr><td class="num">D5</td><td>Score = expected level, loss CE + EMD</td><td>Regression head; CORN ordinal decomposition</td><td>Keeps the Jev fields (probabilities for each level) and makes the loss respect order.</td><td>CORN may give better rank consistency; it is an option for later.</td></tr>
+      <tr><td class="num">D6</td><td>Backbone Qwen3-0.6B (dense)</td><td>Gemma-3-270m, SmolLM2-360M, Granite-1B-A400M, LFM2</td><td>Apache-2.0, native transformers, spare embedding rows, Qwen3-Embedding / Reranker show that it reads hidden states well.</td><td>Not an MoE. See D7.</td></tr>
+      <tr><td class="num">D7</td><td>MoE by sparse upcycling, top-1</td><td>A pretrained small MoE (none under 1B total); a MoE from scratch</td><td>0.83B total, same active compute, same output as dense at step 0.</td><td>Ships only if it beats dense (OJ-041).</td></tr>
+      <tr><td class="num">D8</td><td>Template tokens in spare embedding rows</td><td>Resize the matrix; reuse existing tokens</td><td>No resize, old rows untouched, vocab stays a multiple of 128.</td><td>Needs spare rows (Qwen3 has 267).</td></tr>
+      <tr><td class="num">D9</td><td>Temperature per question type, fitted last</td><td>One global T; no post-hoc step</td><td>Types differ in how overconfident they are. T does not change the argmax.</td><td>Must be fitted again after RLCD.</td></tr>
+      <tr><td class="num">D10</td><td>No class weights for rare labels</td><td>Weighted loss; oversampling</td><td>Weights move p away from the true rates. Calibration is the product.</td><td>Accuracy looks weak on rare-label sources; judge them by Brier and NLL.</td></tr>
+      <tr><td class="num">D11</td><td>RLCD without text generation or PPO</td><td>PPO with a reward model (Yang et al.)</td><td>Our actions are distributions over flags, so the terms can be computed directly. Twins give exact labels.</td><td>REINFORCE is kept only for rewards with no gradient.</td></tr>
+      <tr><td class="num">D12</td><td>fp16 on Kaggle T4 / P100</td><td>bf16; fp32</td><td>T4 and P100 have no bf16. fp32 is about 2× slower.</td><td>Needs GradScaler; watch for overflow.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <h3>Latest sub-1B models (checked 2026-09-29)</h3>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Model</th><th>Released</th><th>Params</th><th>Design</th><th>License</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td><b>Qwen/Qwen3-0.6B</b></td><td>2025-04</td><td class="num">596M</td><td>Transformer</td><td>Apache-2.0</td><td><span class="chip keep">keep</span> Best precedent (Qwen3-Embedding / Reranker). Check fp16 hidden-state range on T4.</td></tr>
+      <tr><td>Qwen/Qwen3.5-0.8B</td><td>2026-02</td><td class="num">~0.8B incl. vision</td><td>Hybrid Gated DeltaNet + attention</td><td>Apache-2.0</td><td><span class="chip new">test</span> Newest candidate. Needs latest transformers and a smoke test before any switch.</td></tr>
+      <tr><td>ibm-granite/granite-4.0-h-350m</td><td>2025-10</td><td class="num">~340M</td><td>Hybrid Mamba2 + attention</td><td>Apache-2.0</td><td>Small and open. No classification evidence; fp16 on Mamba2 unknown.</td></tr>
+      <tr><td>LiquidAI/LFM2.5-350M</td><td>2025-11</td><td class="num">350M</td><td>Hybrid conv + GQA</td><td>LFM license (not OSI)</td><td>Fast on CPU. License limits release.</td></tr>
+      <tr><td>tiiuae/Falcon-H1-0.5B</td><td>2025-07</td><td class="num">0.5B</td><td>Hybrid Transformer + Mamba</td><td>Falcon license</td><td>Needs transformers from git main.</td></tr>
+      <tr><td>google/gemma-3-270m</td><td>2025-03</td><td class="num">270M</td><td>Transformer</td><td>Gemma terms</td><td>Known fp16 overflow; poor fit for T4. Gemma 4 has no sub-1B size.</td></tr>
+      <tr><td>Any pretrained MoE</td><td>–</td><td>–</td><td>–</td><td>–</td><td><span class="chip fix">none &lt; 1B total</span> OLMoE, Granite-A400M, Qwen3.5 MoE sizes are larger. Upcycling (D7) stays.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p style="font-size:13px;color:var(--muted)">Source: Hugging Face model cards. Release dates for the LFM models come from a fetch summary and may be off by a few months.</p>
+</section>
+
+<section id="changes">
+  <div class="eyebrow">4 · Before and after</div>
+  <h2>What changed in each layer</h2>
+  <div class="tabs" role="tablist" aria-label="Layer">
+    <button role="tab" id="t-model" aria-selected="true" aria-controls="p-model">Model</button>
+    <button role="tab" id="t-data" aria-selected="false" aria-controls="p-data">Data</button>
+    <button role="tab" id="t-train" aria-selected="false" aria-controls="p-train">Training</button>
+    <button role="tab" id="t-ops" aria-selected="false" aria-controls="p-ops">Serve and GPU</button>
+  </div>
+
+  <div class="tbl" role="tabpanel" id="p-model" aria-labelledby="t-model">
+  <table>
+    <thead><tr><th>Part</th><th>Before</th><th>After</th><th>Kind</th></tr></thead>
+    <tbody>
+      <tr><td>Backbone</td><td>Any HF model, default Qwen3-0.6B</td><td>Qwen3-0.6B chosen (Apache-2.0, native, Qwen3-Embedding precedent)</td><td><span class="chip keep">decided</span></td></tr>
+      <tr><td>Template tokens</td><td>Added, then matrix resized to tokenizer length (lost 267 spare rows)</td><td>Placed in Qwen3's 267 spare embedding rows; no resize; mean + small noise init</td><td><span class="chip fix">fixed</span></td></tr>
+      <tr><td>Flag readout</td><td>Python loop per example and per question</td><td>One tensor gather over the whole batch (<code>collate.py</code>, <code>flag_logits</code>)</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>MoE</td><td>None</td><td><code>moe.py</code>: sparse upcycling, 4 experts × last 8 layers, top-1, output equal to dense at init</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Temperature</td><td>None (T = 1)</td><td>One T per question type, fitted on val, stored in the checkpoint, clamped to [0.05, 20]</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Schema builder</td><td>Duplicate question names passed through the builder</td><td>Builder rejects duplicate names</td><td><span class="chip fix">fixed</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="tbl" role="tabpanel" id="p-data" aria-labelledby="t-data" hidden>
+  <table>
+    <thead><tr><th>Part</th><th>Before</th><th>After</th><th>Kind</th></tr></thead>
+    <tbody>
+      <tr><td>Splits</td><td>One file per source</td><td><code>&lt;source&gt;.{train,val,test}.jsonl</code>; real HF splits, else a sha1 hash of the row id</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Sampling</td><td><code>--limit</code> took the first N rows (clinc150 had no out-of-scope rows)</td><td>Seeded random sample or reservoir sample</td><td><span class="chip fix">fixed</span></td></tr>
+      <tr><td>Pokerbench</td><td>Option menu built from the label; off-grid bet size marked the answer</td><td>Menu from the state only (facing bet + pot grid); sized labels snap to the grid</td><td><span class="chip fix">fixed leak</span></td></tr>
+      <tr><td>HelpSteer3</td><td>States cut at the end, so response 2 was lost</td><td>Token budget per part: context 30 %, each response 35 %, head + tail kept</td><td><span class="chip fix">fixed</span></td></tr>
+      <tr><td>New sources</td><td>6 sources</td><td>+ prm800k (step quality, score) and Diplomacy deception (noul)</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Mixing</td><td>None</td><td><code>mix.py</code>: source weight ∝ n<sup>0.5</sup>, epoch order per source</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Checks</td><td>None</td><td><code>data_stats.py</code>: counts, label balance, token lengths, leak check</td><td><span class="chip new">new</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="tbl" role="tabpanel" id="p-train" aria-labelledby="t-train" hidden>
+  <table>
+    <thead><tr><th>Part</th><th>Before</th><th>After</th><th>Kind</th></tr></thead>
+    <tbody>
+      <tr><td>Trainer</td><td><code>train_toy.py</code> on synthetic tickets</td><td><code>train.py</code>: mixed JSONL, two lr groups, warmup + cosine, fp16 + GradScaler, grad checkpointing, best-by-NLL checkpoint</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Score loss</td><td>Cross-entropy only (a near miss costs as much as a far miss)</td><td>CE + squared EMD between CDFs (default <code>ce+emd</code>)</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Metrics</td><td>Loss only</td><td>Accuracy, NLL, Brier, ECE (equal mass), MAE for score; per type and per source</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Stage 2</td><td><code>rlcd.py</code> functions, no trainer</td><td><code>rlcd_train.py</code> + <code>contrast.py</code> twins (see section 3)</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Eval</td><td>None</td><td><code>calibrate.py</code>, <code>eval.py</code> with a TF-IDF + LR baseline</td><td><span class="chip new">new</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="tbl" role="tabpanel" id="p-ops" aria-labelledby="t-ops" hidden>
+  <table>
+    <thead><tr><th>Part</th><th>Before</th><th>After</th><th>Kind</th></tr></thead>
+    <tbody>
+      <tr><td>Server</td><td>None</td><td><code>serve.py</code> <code>POST /v1/systemone</code>; response exactly <code>{model, answers, usage{input_tokens, output_tokens}}</code></td><td><span class="chip new">new</span></td></tr>
+      <tr><td>GPU</td><td>None (CPU only)</td><td><code>kaggle/run.sh</code>: bundle → upload → push → wait → pull, with <code>--dry-run</code></td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Precision</td><td>fp32</td><td>fp16 autocast on T4/P100 (no bf16 on these GPUs)</td><td><span class="chip new">new</span></td></tr>
+      <tr><td>Packaging</td><td>None</td><td><code>pyproject.toml</code>, CI workflow (runs after <code>git init</code>)</td><td><span class="chip new">new</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section id="rlcd">
+  <div class="eyebrow">5 · Stage 2</div>
+  <h2>OpenJev-RLCD: calibration goal, contrast method</h2>
+  <p>"RLCD" has two public meanings. TypeSafe uses it for <em>Reinforcement Learning for Calibrated Decisions</em> and gives only the goal. Yang et al. (arXiv:2307.12950) use it for <em>Reinforcement Learning from Contrastive Distillation</em>. OpenJev takes the goal from the first and the contrast idea from the second.</p>
+  <div class="formula">loss = proper score          (CE / Brier, + EMD for score; originals and twins)
+     + λ_cal · soft-ECE     (one per question type, then the mean)
+     + λ_kl  · KL(p ‖ p_SFT) (frozen SFT copy; stops mode dropping)
+     + λ_con · consistency  (twin vs. the mapped original distribution)</div>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Contrast twins with exact labels</h3>
+      <p>A deterministic change to a real labelled row gives a second row. Its label follows exactly from the original, so no label is invented.</p>
+      <ul>
+        <li><b>swap</b>: swap the noul true/false text → p′ = flip(p)</li>
+        <li><b>reverse</b>: reverse score levels → label k becomes n−1−k</li>
+        <li><b>shuffle</b>: permute choice options → p′[j] = p[perm[j]]</li>
+        <li><b>drop</b>: remove a wrong option → renormalize the rest</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>What each term punishes</h3>
+      <ul>
+        <li>Proper score: wrong answers, and overconfident wrong answers most.</li>
+        <li>Soft ECE: a gap between stated confidence and real accuracy over a batch.</li>
+        <li>KL to SFT: drift that collapses the distribution onto one style.</li>
+        <li>Consistency: answers that follow option order or wording and not the state.</li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">A review change: the soft-ECE term was first computed over all questions in one set of bins. Noul confidence starts at 0.5 and wide choices sit low, so one type hid the errors of the other. It is now computed per type and averaged.</p>
+</section>
+
+<section id="moe">
+  <div class="eyebrow">6 · Budget</div>
+  <h2>Staying under 1B total parameters</h2>
+  <p>No public pretrained MoE has fewer than 1B total parameters. The smallest ones are small only in active parameters. OpenJev makes its own MoE from Qwen3-0.6B by sparse upcycling. <code>train.py</code> stops with an error if the total reaches 1B.</p>
+  <div class="diagram" role="img" aria-label="Bar chart of total and active parameters for three builds against a 1B limit">
+  <svg viewBox="0 0 900 200">
+    <g font-size="12">
+      <line x1="220" y1="20" x2="220" y2="170" stroke="var(--line)"/>
+      <line x1="820" y1="20" x2="820" y2="170" stroke="var(--warm)" stroke-dasharray="4 4"/>
+      <text x="820" y="188" text-anchor="middle" class="small">1.0B limit</text>
+      <text x="220" y="188" text-anchor="middle" class="small">0</text>
+      <text x="520" y="188" text-anchor="middle" class="small">0.5B</text>
+      <line x1="520" y1="20" x2="520" y2="170" stroke="var(--line)" stroke-dasharray="2 4"/>
+      <text x="210" y="45" text-anchor="end">Dense Qwen3-0.6B</text>
+      <rect x="220" y="32" width="357.6" height="20" rx="3" fill="var(--accent)"/>
+      <text x="585" y="47" class="mono">596.0M</text>
+      <text x="210" y="95" text-anchor="end">MoE 4 × last 8</text>
+      <rect x="220" y="82" width="493.6" height="20" rx="3" fill="var(--new)"/>
+      <rect x="220" y="82" width="357.7" height="20" rx="3" fill="var(--accent)"/>
+      <text x="721" y="97" class="mono">822.6M</text>
+      <text x="210" y="145" text-anchor="end">MoE 8 × last 4</text>
+      <rect x="220" y="132" width="516.2" height="20" rx="3" fill="var(--new)"/>
+      <rect x="220" y="132" width="357.7" height="20" rx="3" fill="var(--accent)"/>
+      <text x="744" y="147" class="mono">860.3M</text>
+    </g>
+  </svg>
+  </div>
+  <p class="small" style="color:var(--muted);font-size:13px"><span class="chip keep">teal</span> active parameters per token (596M in every build) · <span class="chip new">blue</span> extra expert parameters. Counts come from the real Qwen3-0.6B config. The MoE ships only if it beats the dense model on the same data (ticket OJ-041).</p>
+</section>
+
+<section id="data">
+  <div class="eyebrow">7 · Data</div>
+  <h2>Eight sources, all in the Jev format</h2>
+  <div class="tbl">
+  <table>
+    <thead><tr><th>Source</th><th>Questions</th><th>Train</th><th>Val</th><th>Test</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>banking77</td><td>choice (77)</td><td class="num">9,504</td><td class="num">489</td><td class="num">3,076</td><td></td></tr>
+      <tr><td>clinc150</td><td>choice (150) + noul</td><td class="num">15,250</td><td class="num">3,100</td><td class="num">5,500</td><td>out-of-scope noul</td></tr>
+      <tr><td>support_tickets</td><td>choice + score</td><td class="num">47,494</td><td class="num">2,600</td><td class="num">2,673</td><td>8,998 skipped</td></tr>
+      <tr><td>helpsteer3</td><td>score (7)</td><td class="num">36,570</td><td class="num">2,017</td><td class="num">1,889</td><td>budgeted states</td></tr>
+      <tr><td>lichess_puzzles</td><td>choice (legal moves) + score</td><td class="num">90,175</td><td class="num">4,987</td><td class="num">4,838</td><td>100k cap</td></tr>
+      <tr><td>pokerbench</td><td>choice (state menu)</td><td class="num">88,541</td><td class="num">4,620</td><td class="num">10,471</td><td>100k cap, leak fixed</td></tr>
+      <tr><td>prm800k</td><td>score (3)</td><td class="num">102,342</td><td class="num">4,445</td><td class="num">15,566</td><td>81 % "good"</td></tr>
+      <tr><td>diplomacy_deception</td><td>noul</td><td class="num">13,132</td><td class="num">1,416</td><td class="num">2,741</td><td>4.5 % lies</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="note">Rare labels are not re-weighted. Class weights move the probabilities away from the true rates, and calibration is the product. These sources are judged by Brier and NLL.</p>
+</section>
+
+<section id="status">
+  <div class="eyebrow">8 · Status</div>
+  <h2>What runs next</h2>
+  <details open>
+    <summary>Ready now</summary>
+    <div><p>Code, data and tests are complete on CPU (145 tests pass). The Kaggle token works for user <code>piyushsar</code>. The bundle is built (113 MB zip).</p></div>
+  </details>
+  <details>
+    <summary>Next steps on the GPU</summary>
+    <div>
+      <p>1. Upload the private dataset <code>piyushsar/openjev-data</code>.</p>
+      <p>2. Push the kernel: 3000 SFT steps of Qwen3-0.6B, batch 8 × accum 4, fp16, grad checkpointing.</p>
+      <p>3. Pull the checkpoint, run <code>calibrate.py</code> and <code>eval.py</code>, then <code>rlcd_train.py</code>.</p>
+      <p>4. Train the MoE build with the same data and compare (OJ-041).</p>
+    </div>
+  </details>
+  <details>
+    <summary>Open points</summary>
+    <div>
+      <p>The Kaggle weekly GPU quota and session limit are not confirmed yet.</p>
+      <p><code>usage.output_tokens</code> counts flag readouts; the Jev docs do not say how Jev counts it.</p>
+      <p>Outcome rewards (OJ-032) wait for a source with real utilities; poker and chess data give only the best action.</p>
+    </div>
+  </details>
+</section>
+
+<footer>Source: <code>PLAN.md</code> and <code>TASKS.md</code> in the OpenJev repository.</footer>
+</div>
+
+<script>
+(function(){
+  var tabs=[].slice.call(document.querySelectorAll('[role="tab"]'));
+  function show(t){
+    tabs.forEach(function(b){
+      var on=b===t; b.setAttribute('aria-selected',on?'true':'false');
+      document.getElementById(b.getAttribute('aria-controls')).hidden=!on;
+    });
+  }
+  tabs.forEach(function(b,i){
+    b.addEventListener('click',function(){show(b)});
+    b.addEventListener('keydown',function(e){
+      if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+        var n=tabs[(i+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length]; n.focus(); show(n);
+      }
+    });
+  });
+})();
+</script>

@@ -1,0 +1,887 @@
+[
+  {
+    "name": "PolyAI/banking77",
+    "id_or_url": "https://huggingface.co/datasets/mteb/banking77",
+    "latest_version": "mteb/banking77 mirror (unchanged from original PolyAI/banking77; original repo now script-based/unsupported by datasets-server, mteb mirror used to fetch a live row)",
+    "size": "3076 test rows (13083 total)",
+    "license": "cc-by-4.0",
+    "verified": true,
+    "raw_sample": {
+      "text": "How do I locate my card?",
+      "label": 11,
+      "label_text": "card_arrival"
+    },
+    "note": "PolyAI/banking77's own repo raises 'dataset scripts no longer supported' on datasets-server; used mteb/banking77 (identical data, parquet-converted) to pull a real row. Full 77-class label set truncated to 30 options per spec, correct label 'card_arrival' placed at index 0.",
+    "review": [
+      "warn",
+      "The label is real. The option list was cut to 30 and the answer is always option 0. Use all 77 intents in random order."
+    ],
+    "openjev": {
+      "id": "banking77-test-0",
+      "source": "PolyAI/banking77",
+      "domain": "workflow",
+      "state": "Customer support query: \"How do I locate my card?\"",
+      "questions": {
+        "intent": {
+          "type": "choice",
+          "instructions": "Classify the banking customer query intent",
+          "criteria": {
+            "card_arrival": "",
+            "activate_my_card": "",
+            "age_limit": "",
+            "apple_pay_or_google_pay": "",
+            "atm_support": "",
+            "automatic_top_up": "",
+            "balance_not_updated_after_bank_transfer": "",
+            "balance_not_updated_after_cheque_or_cash_deposit": "",
+            "beneficiary_not_allowed": "",
+            "cancel_transfer": "",
+            "card_about_to_expire": "",
+            "card_acceptance": "",
+            "card_delivery_estimate": "",
+            "card_linking": "",
+            "card_not_working": "",
+            "card_payment_fee_charged": "",
+            "card_payment_not_recognised": "",
+            "card_payment_wrong_exchange_rate": "",
+            "card_swallowed": "",
+            "cash_withdrawal_charge": "",
+            "cash_withdrawal_not_recognised": "",
+            "change_pin": "",
+            "compromised_card": "",
+            "contactless_not_working": "",
+            "country_support": "",
+            "declined_card_payment": "",
+            "declined_cash_withdrawal": "",
+            "declined_transfer": "",
+            "direct_debit_payment_not_recognised": "",
+            "disposable_card_limits": ""
+          }
+        }
+      },
+      "answers": {
+        "intent": "card_arrival"
+      }
+    }
+  },
+  {
+    "name": "clinc_oos (clinc150)",
+    "id_or_url": "https://huggingface.co/datasets/clinc/clinc_oos",
+    "latest_version": "clinc/clinc_oos (renamed from clinc_oos; same CLINC150 data, config=small used)",
+    "size": "5500 test rows (config small), 151 intents incl. oos",
+    "license": "cc-by-3.0",
+    "verified": true,
+    "raw_sample": {
+      "text": "how would you say fly in italian",
+      "intent": 61,
+      "intent_name": "translate"
+    },
+    "note": "Legacy `clinc_oos` dataset id renamed to clinc/clinc_oos on HF; used config=small (latest active config with data). 151-class label set capped to 30 options including the correct 'translate'.",
+    "review": [
+      "ok",
+      "The label is real. Use all 151 intents in a real converter."
+    ],
+    "openjev": {
+      "id": "clinc150-small-test-0",
+      "source": "clinc/clinc_oos",
+      "domain": "workflow",
+      "state": "User utterance to a task assistant: \"how would you say fly in italian\"",
+      "questions": {
+        "intent": {
+          "type": "choice",
+          "instructions": "Classify the user intent (task-oriented dialog, includes out-of-scope 'oos')",
+          "criteria": {
+            "restaurant_reviews": "",
+            "nutrition_info": "",
+            "account_blocked": "",
+            "oil_change_how": "",
+            "time": "",
+            "weather": "",
+            "redeem_rewards": "",
+            "interest_rate": "",
+            "gas_type": "",
+            "accept_reservations": "",
+            "smart_home": "",
+            "user_name": "",
+            "report_lost_card": "",
+            "repeat": "",
+            "whisper_mode": "",
+            "what_are_your_hobbies": "",
+            "order": "",
+            "jump_start": "",
+            "schedule_meeting": "",
+            "meeting_schedule": "",
+            "freeze_account": "",
+            "what_song": "",
+            "meaning_of_life": "",
+            "restaurant_reservation": "",
+            "traffic": "",
+            "make_call": "",
+            "text": "",
+            "bill_balance": "",
+            "improve_credit_score": "",
+            "translate": ""
+          }
+        }
+      },
+      "answers": {
+        "intent": "translate"
+      }
+    }
+  },
+  {
+    "name": "Salesforce/xlam-function-calling-60k (superseded by Salesforce/APIGen-MT-5k)",
+    "id_or_url": "https://huggingface.co/datasets/Salesforce/APIGen-MT-5k",
+    "latest_version": "Salesforce/APIGen-MT-5k (Oct 2025) — newer multi-turn APIGen release; xlam-function-calling-60k is gated/private and not directly downloadable without auth",
+    "size": "5000 multi-turn tool-use conversations",
+    "license": "cc-by-nc-4.0 (Salesforce Research license)",
+    "verified": true,
+    "raw_sample": {
+      "conversations_excerpt": "[{\"from\": \"human\", \"value\": \"Hello, I have a request regarding a past flight reservation, 0U4NPP, from PHL to DEN. I was wondering if I could still cancel it due to personal reasons.\"}, {\"from\": \"gpt\", \"value\": \"To assist you with the cancellation request, I need to verify a few details:\\n1. Your user ID.\\n2. The reason for cancellation...\"}, {\"from\": \"function_call\", \"value\": \"{\\\"name\\\": \\\"get_reservation_details\\\", \\\"arguments\\\": {\\\"reservation_id\\\": \\\"0U4NPP\\\"}}\"}]"
+    },
+    "note": "Salesforce/xlam-function-calling-60k requires HF auth/gating and could not be fetched anonymously. Used the newer official Salesforce/APIGen-MT-5k (multi-turn, Oct 2025) as the current-generation APIGen dataset instead, per task instructions allowing 'or newer APIGen'.",
+    "review": [
+      "warn",
+      "The correct call is real. The other options were made up. License is CC BY-NC."
+    ],
+    "openjev": {
+      "id": "apigen-mt-5k-0",
+      "source": "Salesforce/APIGen-MT-5k",
+      "domain": "workflow",
+      "state": "User: Hello, I have a request regarding a past flight reservation, 0U4NPP, from PHL to DEN. I was wondering if I could still cancel it due to personal reasons.\nAssistant: To assist you with the cancellation request, I need to verify a few details:\n1. Your user ID.\n2. The reason for cancellation (change of plan, airline cancelled flight, or other reasons).\nUser: My user ID is amelia_rossi_1651. Reason: personal.",
+      "questions": {
+        "next_tool_call": {
+          "type": "choice",
+          "instructions": "Select the correct next tool call given the multi-turn conversation",
+          "criteria": {
+            "get_reservation_details(reservation_id='0U4NPP')": "",
+            "cancel_reservation(reservation_id='0U4NPP')": "",
+            "transfer_to_human_agents()": "",
+            "think(thought='...')": ""
+          }
+        }
+      },
+      "answers": {
+        "next_tool_call": "get_reservation_details(reservation_id='0U4NPP')"
+      }
+    }
+  },
+  {
+    "name": "BFCL (Berkeley Function-Calling Leaderboard)",
+    "id_or_url": "https://github.com/ShishirPatil/gorilla/tree/main/berkeley-function-call-leaderboard",
+    "latest_version": "BFCL v4 (released Jul 17 2025, patched through Oct 1 2025) — confirmed via CHANGELOG.md; HF mirror gorilla-llm/Berkeley-Function-Calling-Leaderboard has no loadable data files so raw GitHub JSON was used",
+    "size": "BFCL_v4_simple_python.json and ~20 other category files",
+    "license": "Apache-2.0",
+    "verified": true,
+    "raw_sample": {
+      "id": "simple_python_0",
+      "question": [
+        [
+          {
+            "role": "user",
+            "content": "Find the area of a triangle with a base of 10 units and height of 5 units."
+          }
+        ]
+      ],
+      "function": [
+        {
+          "name": "calculate_triangle_area",
+          "description": "Calculate the area of a triangle given its base and height.",
+          "parameters": {
+            "type": "dict",
+            "properties": {
+              "base": {
+                "type": "integer",
+                "description": "The base of the triangle."
+              },
+              "height": {
+                "type": "integer",
+                "description": "The height of the triangle."
+              },
+              "unit": {
+                "type": "string",
+                "description": "The unit of measure (defaults to 'units' if not specified)"
+              }
+            },
+            "required": [
+              "base",
+              "height"
+            ]
+          }
+        }
+      ]
+    },
+    "note": "Ground-truth args for simple_python_0 live in a separate possible_answer file not fetched (budget); labels left null (no label) since exact argument-level correctness can't be scored via a simple choice block without that file.",
+    "review": [
+      "warn",
+      "The label is empty. The answer is in the possible_answer files."
+    ],
+    "openjev": {
+      "id": "bfcl-v4-simple-python-0",
+      "source": "gorilla-llm/BFCL-v4 (GitHub: ShishirPatil/gorilla)",
+      "domain": "workflow",
+      "state": "User: Find the area of a triangle with a base of 10 units and height of 5 units.\nAvailable function: calculate_triangle_area(base:int, height:int, unit:str='units') - Calculate the area of a triangle given its base and height.",
+      "questions": {
+        "function_called": {
+          "type": "choice",
+          "instructions": "Generate the correct function call for the user request",
+          "criteria": {
+            "calculate_triangle_area": "",
+            "none/no call": ""
+          }
+        }
+      },
+      "answers": {
+        "function_called": null
+      }
+    }
+  },
+  {
+    "name": "ToolBench (OpenBMB)",
+    "id_or_url": "https://github.com/OpenBMB/ToolBench",
+    "latest_version": "ToolBench GitHub repo, last commit 2025-05-21 (data_example/instruction/G1_query.json); no newer HF dataset supersedes it",
+    "size": "G1/G2/G3 query sets (thousands of queries); data_example has 5 sample rows",
+    "license": "Apache-2.0",
+    "verified": true,
+    "raw_sample": {
+      "api_list_excerpt": [
+        {
+          "category_name": "Logistics",
+          "tool_name": "SQUAKE",
+          "api_name": "Checkhealth"
+        },
+        {
+          "category_name": "Logistics",
+          "tool_name": "SQUAKE",
+          "api_name": "Projects"
+        }
+      ],
+      "query": "I'm working on a logistics project for my company and need to check the health of the SQUAKE API. Can you verify the API health by calling the 'Checkhealth' API endpoint? Additionally, I would like to retrieve the list of projects using the 'Projects' API endpoint.",
+      "relevant APIs": [
+        [
+          "SQUAKE",
+          "Checkhealth"
+        ],
+        [
+          "SQUAKE",
+          "Projects"
+        ]
+      ],
+      "query_id": 1
+    },
+    "note": "Used GitHub data_example (small public sample); full ToolBench corpus requires separate download not accessible via simple curl within budget. | Converted to the Jev format: multi choice split into one noul question per option.",
+    "review": [
+      "warn",
+      "The correct APIs are real. Two options were made up. Use the real API list of the query."
+    ],
+    "openjev": {
+      "id": "toolbench-g1-1",
+      "source": "OpenBMB/ToolBench",
+      "domain": "workflow",
+      "state": "User query: I'm working on a logistics project for my company and need to check the health of the SQUAKE API. Can you verify the API health by calling the 'Checkhealth' API endpoint? Additionally, I would like to retrieve the list of projects using the 'Projects' API endpoint.",
+      "questions": {
+        "relevant_apis: SQUAKE.Checkhealth": {
+          "type": "noul",
+          "instructions": "Select the relevant APIs needed to answer the query",
+          "criteria": {
+            "true": "SQUAKE.Checkhealth applies",
+            "false": "SQUAKE.Checkhealth does not apply"
+          }
+        },
+        "relevant_apis: SQUAKE.Projects": {
+          "type": "noul",
+          "instructions": "Select the relevant APIs needed to answer the query",
+          "criteria": {
+            "true": "SQUAKE.Projects applies",
+            "false": "SQUAKE.Projects does not apply"
+          }
+        },
+        "relevant_apis: Weather.GetForecast": {
+          "type": "noul",
+          "instructions": "Select the relevant APIs needed to answer the query",
+          "criteria": {
+            "true": "Weather.GetForecast applies",
+            "false": "Weather.GetForecast does not apply"
+          }
+        },
+        "relevant_apis: Maps.Geocode": {
+          "type": "noul",
+          "instructions": "Select the relevant APIs needed to answer the query",
+          "criteria": {
+            "true": "Maps.Geocode applies",
+            "false": "Maps.Geocode does not apply"
+          }
+        }
+      },
+      "answers": {
+        "relevant_apis: SQUAKE.Checkhealth": true,
+        "relevant_apis: SQUAKE.Projects": true,
+        "relevant_apis: Weather.GetForecast": false,
+        "relevant_apis: Maps.Geocode": false
+      }
+    }
+  },
+  {
+    "name": "microsoft/Taskbench",
+    "id_or_url": "https://huggingface.co/datasets/microsoft/Taskbench",
+    "latest_version": "microsoft/Taskbench (dailylifeapis config), last updated 2024-08-21, no newer version found on HF",
+    "size": "4318 rows (dailylifeapis split=test)",
+    "license": "MIT",
+    "verified": true,
+    "raw_sample": {
+      "id": "77532649",
+      "seed": 813407,
+      "n_tools": 1,
+      "type": "single",
+      "sampled_nodes": "[{\"task\": \"play_movie_by_title\", \"arguments\": [{\"name\": \"title\", \"type\": \"string\", \"desc\": \"The title of the movie to play\"}]}]",
+      "instruction": "I've been hearing a lot about this movie called 'Inception', could you help me watch it?",
+      "tool_steps": "[\"Step 1: Invoke play_movie_by_title API with 'Inception' as movie title.\"]",
+      "tool_nodes": "[{\"task\": \"play_movie_by_title\", \"arguments\": [{\"name\": \"title\", \"value\": \"Inception\"}]}]"
+    },
+    "note": null,
+    "review": [
+      "warn",
+      "The correct tool is real. The other options were made up. Use the tool graph of the domain."
+    ],
+    "openjev": {
+      "id": "taskbench-dailylife-77532649",
+      "source": "microsoft/Taskbench",
+      "domain": "workflow",
+      "state": "Instruction: I've been hearing a lot about this movie called 'Inception', could you help me watch it?",
+      "questions": {
+        "tool_selected": {
+          "type": "choice",
+          "instructions": "Select the correct tool/API to invoke for the instruction",
+          "criteria": {
+            "play_movie_by_title": "",
+            "search_movie": "",
+            "book_ticket": "",
+            "set_reminder": ""
+          }
+        }
+      },
+      "answers": {
+        "tool_selected": "play_movie_by_title"
+      }
+    }
+  },
+  {
+    "name": "WorFBench (zjunlp)",
+    "id_or_url": "https://huggingface.co/datasets/zjunlp/WorFBench_test",
+    "latest_version": "zjunlp/WorFBench_test, last updated 2025-02-26 (train updated 2025-03-24); no newer release found",
+    "size": "2146 test rows",
+    "license": "unspecified (research use, per zjunlp repo norms)",
+    "verified": true,
+    "raw_sample": {
+      "source": "alfworld",
+      "conversations_excerpt": "system: You are a helpful task planner... | user: You are in the middle of a room... find two newspaper and put them in armchair. | assistant: Node:\n1: go to locations where newspapers may be placed\n2: take newspaper from location\n3: go to armchair\n4: put newspaper in/on armchair\n5: repeat process for second newspaper.\nEdge: (START,1) (1,2) (2,3) (3,4) (4,5) (5,END)",
+      "target": "graph",
+      "id": "alfworld_196",
+      "category": "eval"
+    },
+    "note": null,
+    "review": [
+      "warn",
+      "The first node is real. The other options were made up."
+    ],
+    "openjev": {
+      "id": "worfbench-alfworld-196",
+      "source": "zjunlp/WorFBench_test",
+      "domain": "workflow",
+      "state": "Task: find two newspaper and put them in armchair.\nRoom: armchair 1, diningtable 1, drawer 1-4, garbagecan 1, shelf 1, sidetable 1-3, sofa 1.\nActions available: go to {recep}; take {obj} from {recep}; put {obj} in/on {recep}; open/close {recep}; toggle {obj} {recep}; clean/heat/cool {obj} with {recep}.",
+      "questions": {
+        "first_subtask": {
+          "type": "choice",
+          "instructions": "Choose the correct first subtask node in the workflow graph plan",
+          "criteria": {
+            "go to locations where newspapers may be placed": "",
+            "put newspaper in/on armchair": "",
+            "open drawer 1": "",
+            "clean newspaper with sofa": ""
+          }
+        }
+      },
+      "answers": {
+        "first_subtask": "go to locations where newspapers may be placed"
+      }
+    }
+  },
+  {
+    "name": "osunlp/Multimodal-Mind2Web (text fields only)",
+    "id_or_url": "https://huggingface.co/datasets/osunlp/Multimodal-Mind2Web",
+    "latest_version": "osunlp/Multimodal-Mind2Web, config=default, split=test_task (no newer Mind2Web release supersedes this HF dataset)",
+    "size": "multiple test splits (test_task/test_website/test_domain)",
+    "license": "unspecified (research use; OSU NLP group)",
+    "verified": true,
+    "raw_sample": {
+      "action_uid": "73e0e7ed-d784-4b7a-a06c-48324e44ce7b",
+      "operation": {
+        "original_op": "HOVER",
+        "value": "",
+        "op": "CLICK"
+      },
+      "website": "budget",
+      "domain": "Travel",
+      "subdomain": "Car rental",
+      "confirmed_task": "Rent a truck with the lowest rent with two dozen furniture pads for 100 miles at zip 08817 on April 12 at 2:30 pm rented truck is to be returned to the exact location and date, and the pickup and drop off will be at the nearest location.",
+      "action_reprs_excerpt": [
+        "[button]  Reservations -> HOVER",
+        "[link]  Budget Truck -> CLICK",
+        "[textbox]  US City,State or Zip Code -> TYPE: 08817"
+      ],
+      "target_action_reprs": "[button]  Reservations -> HOVER"
+    },
+    "note": null,
+    "review": [
+      "warn",
+      "The target action is real. Use the real candidate elements of the page as options."
+    ],
+    "openjev": {
+      "id": "mind2web-test-task-0",
+      "source": "osunlp/Multimodal-Mind2Web",
+      "domain": "workflow",
+      "state": "Task: Rent a truck with the lowest rent with two dozen furniture pads for 100 miles at zip 08817 on April 12 at 2:30 pm rented truck is to be returned to the exact location and date, and the pickup and drop off will be at the nearest location.\nSite: Budget (Travel/Car rental)\nPrior action reprs: []",
+      "questions": {
+        "next_action": {
+          "type": "choice",
+          "instructions": "Select the correct next web UI action",
+          "criteria": {
+            "[button] Reservations -> HOVER": "",
+            "[link] Budget Truck -> CLICK": "",
+            "[textbox] Zip Code -> TYPE: 08817": "",
+            "[button] Find Your Truck -> CLICK": ""
+          }
+        }
+      },
+      "answers": {
+        "next_action": "[button] Reservations -> HOVER"
+      }
+    }
+  },
+  {
+    "name": "WebShop trajectories",
+    "id_or_url": "https://huggingface.co/datasets/lclan/webshop_expert_trajectories",
+    "latest_version": "lclan/webshop_expert_trajectories, last updated 2025-07-31; note this HF dataset is actually ScienceWorld-formatted expert trajectories (task_name style, e.g. 'find-plant'), not the original princeton-nlp WebShop shopping-env trajectories, which are not published as a standalone up-to-date HF dataset",
+    "size": "unspecified (agent trajectory rows)",
+    "license": "unspecified",
+    "verified": true,
+    "raw_sample": {
+      "id": 3791,
+      "info": {
+        "agent_arch": "think_act",
+        "llm_name": "NAT3I99p-ep6-6fm-ep6",
+        "reward": 100,
+        "task_name": "find-plant",
+        "var_num": 255
+      },
+      "question_excerpt": "Your task is to find a(n) plant. First, focus on the thing. Then, move it to the orange box in the living room. This room is called the bedroom. In it, you see: the agent, a substance called air, a bed..."
+    },
+    "note": "The dataset name suggests original WebShop (princeton-nlp) trajectories, but the actual schema/content is a ScienceWorld-style embodied-agent trajectory set, not the shopping web environment. Flagged as a naming mismatch; no better-verified 'WebShop trajectories' HF dataset was found in the time budget. Label left null since ground-truth next action wasn't parsed from the full conversation blob.",
+    "review": [
+      "bad",
+      "This dataset is ScienceWorld data under a WebShop name. Do not use it as WebShop."
+    ],
+    "openjev": {
+      "id": "webshop-traj-3791",
+      "source": "lclan/webshop_expert_trajectories",
+      "domain": "workflow",
+      "state": "Task: find a(n) plant. First, focus on the thing. Then, move it to the orange box in the living room. Room: bedroom, containing a bed with a mattress and white pillow, a book shelf with books, etc.",
+      "questions": {
+        "next_action": {
+          "type": "choice",
+          "instructions": "Select the correct next agent action toward completing the task",
+          "criteria": {
+            "go to kitchen": "",
+            "focus on plant": "",
+            "move to orange box": "",
+            "open book shelf": ""
+          }
+        }
+      },
+      "answers": {
+        "next_action": null
+      }
+    }
+  },
+  {
+    "name": "Tobi-Bueck/customer-support-tickets",
+    "id_or_url": "https://huggingface.co/datasets/Tobi-Bueck/customer-support-tickets",
+    "latest_version": "Tobi-Bueck/customer-support-tickets, config=default, split=train, dataset version field=51 in sampled row (no newer support-ticket dataset with wider adoption found)",
+    "size": "~40k+ rows (multi-language support tickets)",
+    "license": "apache-2.0",
+    "verified": true,
+    "raw_sample": {
+      "subject": "Wesentlicher Sicherheitsvorfall",
+      "body_excerpt": "Sehr geehrtes Support-Team, ich möchte einen gravierenden Sicherheitsvorfall melden, der gegenwärtig mehrere Komponenten unserer Infrastruktur betrifft...",
+      "type": "Incident",
+      "queue": "Technical Support",
+      "priority": "high",
+      "language": "de",
+      "tags": [
+        "Security",
+        "Outage",
+        "Disruption",
+        "Data Breach"
+      ]
+    },
+    "note": null,
+    "review": [
+      "ok",
+      "Good fit. Queue and priority are real. Use the full queue list."
+    ],
+    "openjev": {
+      "id": "cst-train-0",
+      "source": "Tobi-Bueck/customer-support-tickets",
+      "domain": "workflow",
+      "state": "Subject: Wesentlicher Sicherheitsvorfall\nBody: Sehr geehrtes Support-Team, ich möchte einen gravierenden Sicherheitsvorfall melden, der gegenwärtig mehrere Komponenten unserer Infrastruktur betrifft. Betroffene Geräte umfassen Projektoren, Bildschirme und Speicherlösungen auf Cloud-Plattformen.",
+      "questions": {
+        "queue": {
+          "type": "choice",
+          "instructions": "Route the support ticket: select queue and priority",
+          "criteria": {
+            "Technical Support": "",
+            "Billing": "",
+            "Product Support": "",
+            "Returns": "",
+            "General Inquiry": ""
+          }
+        },
+        "priority": {
+          "type": "choice",
+          "instructions": "Route the support ticket: select queue and priority",
+          "criteria": {
+            "low": "",
+            "medium": "",
+            "high": ""
+          }
+        }
+      },
+      "answers": {
+        "queue": "Technical Support",
+        "priority": "high"
+      }
+    }
+  },
+  {
+    "name": "nvidia/HelpSteer2 (superseded by HelpSteer3)",
+    "id_or_url": "https://huggingface.co/datasets/nvidia/HelpSteer3",
+    "latest_version": "nvidia/HelpSteer3, config=preference, split=train, last updated 2025-11-16 — confirmed newer than HelpSteer2 (2024-12-18)",
+    "size": "HelpSteer3 preference config: tens of thousands of rows across domains (code, general, multilingual, stem)",
+    "license": "cc-by-4.0",
+    "verified": true,
+    "raw_sample": {
+      "domain": "code",
+      "language": "python",
+      "context_excerpt": "user: lets do python coding | assistant: def greet(name): return f\"Hello, {name}!\"...",
+      "response1_excerpt": "Yes, you are correct. The correct comparison operator should be `<` instead of `<=`...",
+      "response2_excerpt": "Sure! Here's the updated line of code with `<` instead of `<=`: tasks_B = [task for task in tasks if task < x]",
+      "overall_preference": -2
+    },
+    "note": "Used nvidia/HelpSteer3 (Nov 2025), the successor to HelpSteer2, per instructions to pick the latest version. | Converted to the Jev format: score 'overall_preference' bucketed into 5 ordered levels.",
+    "review": [
+      "ok",
+      "Good fit. The preference score is real."
+    ],
+    "openjev": {
+      "id": "helpsteer3-pref-train-0",
+      "source": "nvidia/HelpSteer3",
+      "domain": "judge",
+      "state": "Domain: code (python)\nConversation: user: lets do python coding\nassistant: def greet(name): return f\"Hello, {name}!\" ...\nResponse 1: Yes, you are correct. The correct comparison operator should be `<` instead of `<=`. Here's the corrected code...\nResponse 2: Sure! Here's the updated line of code with `<` instead of `<=`: tasks_B = [task for task in tasks if task < x]",
+      "questions": {
+        "overall_preference": {
+          "type": "score",
+          "instructions": "Judge which response is better (HelpSteer3 preference, -3=R1 much better .. 3=R2 much better)",
+          "criteria": [
+            "-3 to -1.8",
+            "-1.8 to -0.6",
+            "-0.6 to 0.6",
+            "0.6 to 1.8",
+            "1.8 to 3"
+          ]
+        }
+      },
+      "answers": {
+        "overall_preference": 0
+      }
+    }
+  },
+  {
+    "name": "openbmb/UltraFeedback",
+    "id_or_url": "https://huggingface.co/datasets/openbmb/UltraFeedback",
+    "latest_version": "openbmb/UltraFeedback, config=default, split=train (single canonical version, no newer release found on HF)",
+    "size": "~64k prompts x 4 completions each",
+    "license": "MIT",
+    "verified": true,
+    "raw_sample": {
+      "source": "evol_instruct",
+      "instruction_excerpt": "Can you write a C++ program that prompts the user to enter the name of a country and checks if it borders the Mediterranean Sea?...",
+      "models": [
+        "alpaca-7b",
+        "pythia-12b",
+        "starchat",
+        "vicuna-33b"
+      ],
+      "completions_excerpt": "[{'annotations': {'helpfulness': {'Rating': '2', 'Rationale': '...'}}}, ...]"
+    },
+    "note": " | Converted to the Jev format: score 'helpfulness' bucketed into 5 ordered levels.",
+    "review": [
+      "warn",
+      "The context includes the annotator rationale, which leaks the rating. Remove it from the context."
+    ],
+    "openjev": {
+      "id": "ultrafeedback-evol-0",
+      "source": "openbmb/UltraFeedback",
+      "domain": "judge",
+      "state": "Instruction: Can you write a C++ program that prompts the user to enter the name of a country and checks if it borders the Mediterranean Sea?\nModel response (alpaca-7b) excerpt annotated for helpfulness: rating 2/5 — 'The response is clear and not lengthy, but it lacks useful and comprehensive information. The code is partially incorrect...'",
+      "questions": {
+        "helpfulness": {
+          "type": "score",
+          "instructions": "Rate the response helpfulness (UltraFeedback annotation)",
+          "criteria": [
+            "1 to 1.8",
+            "1.8 to 2.6",
+            "2.6 to 3.4",
+            "3.4 to 4.2",
+            "4.2 to 5"
+          ]
+        }
+      },
+      "answers": {
+        "helpfulness": 1
+      }
+    }
+  },
+  {
+    "name": "allenai/reward-bench-2",
+    "id_or_url": "https://huggingface.co/datasets/allenai/reward-bench-2",
+    "latest_version": "allenai/reward-bench-2 (successor to RewardBench 1), config=default, split=test — current latest RewardBench release",
+    "size": "test split, ~1.8k prompts each with 1 chosen + 3 rejected completions",
+    "license": "odc-by",
+    "verified": true,
+    "raw_sample": {
+      "id": 0,
+      "prompt_excerpt": "Hi do you know how to fix Codeium defaule setting that is responsible for this  [ERROR]: [deadline_exceeded] context deadline exceeded",
+      "num_correct": 1,
+      "num_incorrect": 3,
+      "total_completions": 4,
+      "models": [
+        "Qwen2.5-7B-Instruct",
+        "Mistral-7B-Instruct-v0.3",
+        "Mistral-7B-Instruct-v0.3",
+        "Llama-3.1-8B-Instruct"
+      ],
+      "subset": "Factuality"
+    },
+    "note": "RewardBench 2 row has 1 chosen + 3 rejected (num_correct=1); chosen response corresponds to the first listed model per row['chosen'] field. Verified index by row order (chosen assumed to map to the first model in this row, consistent with num_correct=1).",
+    "review": [
+      "warn",
+      "The chosen index is assumed, not checked. Shuffle the responses and include their text."
+    ],
+    "openjev": {
+      "id": "rewardbench2-test-0",
+      "source": "allenai/reward-bench-2",
+      "domain": "judge",
+      "state": "Prompt: Hi do you know how to fix Codeium defaule setting that is responsible for this  [ERROR]: [deadline_exceeded] context deadline exceeded\nCandidate responses from: Qwen2.5-7B-Instruct, Mistral-7B-Instruct-v0.3 (x2), Llama-3.1-8B-Instruct. Subset: Factuality.",
+      "questions": {
+        "best_response": {
+          "type": "choice",
+          "instructions": "Select the chosen (correct/best) response among the 4 candidates",
+          "criteria": {
+            "Qwen2.5-7B-Instruct response": "",
+            "Mistral-7B-Instruct-v0.3 response (a)": "",
+            "Mistral-7B-Instruct-v0.3 response (b)": "",
+            "Llama-3.1-8B-Instruct response": ""
+          }
+        }
+      },
+      "answers": {
+        "best_response": "Qwen2.5-7B-Instruct response"
+      }
+    }
+  },
+  {
+    "name": "PRM800K",
+    "id_or_url": "https://github.com/openai/prm800k",
+    "latest_version": "openai/prm800k GitHub repo, phase2_train.jsonl (canonical/only release; no newer version exists)",
+    "size": "phase2_train.jsonl (largest split, LFS, ~450MB)",
+    "license": "MIT",
+    "verified": true,
+    "raw_sample": {
+      "labeler": "340d89bc-f5b7-45e9-b272-909ba68ee363",
+      "question_problem": "The first four terms in an arithmetic sequence are x+y, x-y, xy, and x/y, in that order. What is the fifth term? Express your answer as a common fraction.",
+      "pre_generated_steps_excerpt": [
+        "To find the fifth term, I need to identify the common difference of the arithmetic sequence and add it to the fourth term.",
+        "The common difference is the same for any consecutive pair of terms, so I can use any of them to find it."
+      ],
+      "label_steps_excerpt": [
+        {
+          "completions": [
+            {
+              "text": "To find the fifth term, I need to identify the common difference of the arithmetic sequence and add it to the fourth term.",
+              "rating": 1,
+              "flagged": null
+            }
+          ],
+          "chosen_completion": 0
+        }
+      ]
+    },
+    "note": " | Converted to the Jev format: score 'step_rating' bucketed into 5 ordered levels.",
+    "review": [
+      "ok",
+      "Good fit. The step rating is real."
+    ],
+    "openjev": {
+      "id": "prm800k-phase2-train-0",
+      "source": "openai/prm800k",
+      "domain": "judge",
+      "state": "Problem: The first four terms in an arithmetic sequence are x+y, x-y, xy, and x/y, in that order. What is the fifth term? Express your answer as a common fraction.\nStep under review: \"To find the fifth term, I need to identify the common difference of the arithmetic sequence and add it to the fourth term.\"",
+      "questions": {
+        "step_rating": {
+          "type": "score",
+          "instructions": "Rate whether the reasoning step is correct/good (PRM800K step rating: -1 bad, 0 neutral, 1 good)",
+          "criteria": [
+            "-1 to -0.6",
+            "-0.6 to -0.2",
+            "-0.2 to 0.2",
+            "0.2 to 0.6",
+            "0.6 to 1"
+          ]
+        }
+      },
+      "answers": {
+        "step_rating": 4
+      }
+    }
+  },
+  {
+    "name": "Agent-RewardBench (newer 2025)",
+    "id_or_url": "https://huggingface.co/datasets/MultimodalAgent/Agent-RewardBench",
+    "latest_version": "MultimodalAgent/Agent-RewardBench, config=default, split=planning_web, last updated 2025-05-25 — multimodal agent judge/reward benchmark (2025 release)",
+    "size": "8 splits (perception/planning/safety x web/embody/travel)",
+    "license": "unspecified (research use)",
+    "verified": true,
+    "raw_sample": {
+      "chosen_answer_excerpt": "To find the list of all neighborhood maps for Brooklyn, we need to analyze the current task, history, and image observations...",
+      "reject_answer": "Next action is CLICK [div] Neighborhood maps.",
+      "chosen_source_name": "Llama-3.2-90B-Vision-Instruct",
+      "reject_source_name": "Phi-3.5-vision-instruct"
+    },
+    "note": "Newer (2025) agent-decision judge dataset added beyond the required list.",
+    "review": [
+      "warn",
+      "The label is real, but the context says which answer was chosen. Hide the names and shuffle."
+    ],
+    "openjev": {
+      "id": "agent-rewardbench-planning-web-0",
+      "source": "MultimodalAgent/Agent-RewardBench",
+      "domain": "judge",
+      "state": "Web agent planning task, next-step judged from image + task/history. Chosen answer (Llama-3.2-90B-Vision-Instruct): 'To find the list of all neighborhood maps for Brooklyn, we need to analyze the current task, history, and image observations...' vs Rejected answer (Phi-3.5-vision-instruct): 'Next action is CLICK [div] Neighborhood maps.'",
+      "questions": {
+        "better_response": {
+          "type": "choice",
+          "instructions": "Select the better agent planning response",
+          "criteria": {
+            "Llama-3.2-90B-Vision-Instruct response": "",
+            "Phi-3.5-vision-instruct response": ""
+          }
+        }
+      },
+      "answers": {
+        "better_response": "Llama-3.2-90B-Vision-Instruct response"
+      }
+    }
+  },
+  {
+    "name": "Team-ACE/ProActEval (newer 2026)",
+    "id_or_url": "https://huggingface.co/datasets/Team-ACE/ProActEval",
+    "latest_version": "Team-ACE/ProActEval, config=default, split=test, last updated 2026-05-29 — proactive multi-turn agent scenario/decision benchmark",
+    "size": "unspecified scenario rows",
+    "license": "unspecified",
+    "verified": true,
+    "raw_sample": {
+      "scenario_id": "bus_behavior_and_support_note_03",
+      "domain": "school_transportation_operations",
+      "description": "A driver wants a usable summary of which students need seating accommodations, behavior reminders, sensory considerations, or extra supervision so the ride stays safe without relying on memory alone.",
+      "user_profile_excerpt": {
+        "persona": "46-year-old veteran driver who knows the route well but wants student-specific support notes kept current"
+      },
+      "metadata": {
+        "generated_by": "gemini-2.5-pro",
+        "reviewed": true,
+        "review_status": "approved"
+      }
+    },
+    "note": "Newer (May 2026) proactive-agent decision benchmark added beyond the required list. Label left null: no ground-truth action field was parsed from the scenario/fact-sheet structure within budget.",
+    "review": [
+      "warn",
+      "The options were made up and the label is empty."
+    ],
+    "openjev": {
+      "id": "proacteval-bus-behavior-03",
+      "source": "Team-ACE/ProActEval",
+      "domain": "workflow",
+      "state": "Scenario: school_transportation_operations. A driver wants a usable summary of which students need seating accommodations, behavior reminders, sensory considerations, or extra supervision so the ride stays safe without relying on memory alone. Persona: 46-year-old veteran driver who knows the route well but wants student-specific support notes kept current.",
+      "questions": {
+        "next_action": {
+          "type": "choice",
+          "instructions": "Decide the agent's next proactive action given the evolving user needs",
+          "criteria": {
+            "ask clarifying question about which student": "",
+            "surface Liam Chen's seating/sensory needs proactively": "",
+            "end conversation": "",
+            "request driver's ID": ""
+          }
+        }
+      },
+      "answers": {
+        "next_action": null
+      }
+    }
+  },
+  {
+    "name": "webarenapro/agent_trajectory_reviews (newer 2026)",
+    "id_or_url": "https://huggingface.co/datasets/webarenapro/agent_trajectory_reviews",
+    "latest_version": "webarenapro/agent_trajectory_reviews, config=default, split=train, generated 2026-05-07 — human-reviewed agent trajectory outcome validation set (WebArena-Pro, NeurIPS runs)",
+    "size": "300 reviewed entries, 169 unique tasks, 313 review files",
+    "license": "unspecified",
+    "verified": true,
+    "raw_sample": {
+      "generated_at": "2026-05-07T02:30:18.881079+00:00",
+      "review_entry_count": 300,
+      "unique_task_id_count": 169,
+      "records_excerpt": [
+        {
+          "agent_model": "Qwen_Qwen3.5-9B",
+          "computed_outcome": "unsolved",
+          "human_outcome": "unsolved",
+          "outcome_validation": "agree"
+        }
+      ]
+    },
+    "note": "Newer (May 2026) human-vs-automatic agent outcome validation dataset added beyond the required list.",
+    "review": [
+      "bad",
+      "Label leak: the context gives the automatic outcome, and the label is agreement with it. Use the trajectory as context instead."
+    ],
+    "openjev": {
+      "id": "webarenapro-review-qwen35-9b-0",
+      "source": "webarenapro/agent_trajectory_reviews",
+      "domain": "judge",
+      "state": "Agent model: Qwen_Qwen3.5-9B on webarena-pro task. Automatically computed outcome: 'unsolved'. A human reviewer independently assessed the same trajectory.",
+      "questions": {
+        "outcome_validation": {
+          "type": "choice",
+          "instructions": "Judge whether the automatically computed task outcome agrees with human review",
+          "criteria": {
+            "agree": "",
+            "disagree": ""
+          }
+        }
+      },
+      "answers": {
+        "outcome_validation": "agree"
+      }
+    }
+  }
+]
