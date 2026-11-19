@@ -88,6 +88,7 @@ dimensions:
       Per-Layer Embedding table on CPU (saves 4.7 GB on E2B) vs on GPU (no host->device copy
       per batch). Gemma 4 config; train_prism.place(). Round 1: 0 was +23% samples/s, so it
       is the default from round 2 (the round-1 baseline trial 0 ran with 1).
+    sample: false   # r1: ple_cpu=0 was +23%; fixed to avoid a reload group
 
   - name: dtype
     type: categorical
