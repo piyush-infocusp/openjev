@@ -171,6 +171,36 @@ def to_additive(mask: torch.Tensor, dtype) -> torch.Tensor:
     return out.masked_fill(~mask, torch.finfo(dtype).min)
 
 
+def host_to_device(t: torch.Tensor, device) -> torch.Tensor:
+    """Copy t to device. CPU -> CUDA (the looked-up PLE rows with ple_cpu=1) goes through
+    pinned memory with non_blocking=True, so the copy is a DMA that does not stall the
+    host; the caching host allocator keeps the pinned block alive until the copy is done."""
+    device = torch.device(device)
+    if t.device == device:
+        return t
+    if t.device.type == "cpu" and device.type == "cuda":
+        return t.pin_memory().to(device, non_blocking=True)
+    return t.to(device)
+
+
+def log_rss(stage: str) -> dict:
+    """Print the host memory of this process: VmRSS now and the peak (ru_maxrss), in GB,
+    so a Kaggle log shows where host RAM peaks (r2 SIGKILLs). Never raises."""
+    out = {"host_rss": stage}
+    try:
+        import resource
+        out["maxrss_gb"] = round(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 2**20, 2)  # KiB
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    out["vmrss_gb"] = round(int(line.split()[1]) / 2**20, 2)
+    except Exception as e:  # not Linux, etc.
+        out["error"] = type(e).__name__
+    import json
+    print(json.dumps(out), flush=True)
+    return out
+
+
 def gemma_text_backbone(name: str, dtype=torch.float32):
     """Load only the text decoder of a Gemma 4 checkpoint (drops vision and audio)."""
     from transformers import AutoModel
@@ -186,6 +216,7 @@ def gemma_text_backbone(name: str, dtype=torch.float32):
     load_dtype = torch.bfloat16 if dtype in (torch.float16, torch.float32) else dtype
     m = AutoModel.from_pretrained(name, dtype=load_dtype, attn_implementation="eager",
                                   low_cpu_mem_usage=True)
+    log_rss("after_load")
     text = getattr(m, "language_model", m)
     for tower in ("audio_tower", "vision_tower", "embed_audio", "embed_vision"):
         if hasattr(m, tower):
@@ -193,19 +224,36 @@ def gemma_text_backbone(name: str, dtype=torch.float32):
     del m
     import gc
     gc.collect()
+    log_rss("after_drop_towers")
     if dtype != load_dtype:
         convert_inplace(text, dtype)
+        log_rss("after_convert")
     text.config._attn_implementation = "sdpa"
     return text
 
 
+def _cast(t: torch.Tensor, dtype, chunk: int = 1 << 24) -> torch.Tensor:
+    """Cast t to dtype. When both dtypes have the same element size (bf16 <-> fp16),
+    overwrite t's own storage chunk by chunk, so peak extra memory is one chunk, not a
+    full copy. The PLE table is a single 2.35B-element tensor: a plain .to() held a
+    second 4.7 GB copy in host RAM (optuna r2b SIGKILL)."""
+    if (t.element_size() != torch.empty((), dtype=dtype).element_size()
+            or not t.is_contiguous()):
+        return t.to(dtype)
+    flat = t.view(-1)
+    out = flat.view(dtype)                      # same bytes, reinterpreted
+    for i in range(0, flat.numel(), chunk):
+        out[i:i + chunk] = flat[i:i + chunk].to(dtype)   # read chunk first, then overwrite
+    return out.view(t.shape)
+
+
 def convert_inplace(module: nn.Module, dtype) -> nn.Module:
-    """Cast floating parameters and buffers one tensor at a time."""
+    """Cast floating parameters and buffers one tensor at a time (in place when possible)."""
     with torch.no_grad():
         for sub in module.modules():
             for name, p in list(sub.named_parameters(recurse=False)):
                 if p.is_floating_point() and p.dtype != dtype:
-                    sub._parameters[name] = nn.Parameter(p.data.to(dtype), requires_grad=p.requires_grad)
+                    sub._parameters[name] = nn.Parameter(_cast(p.data, dtype), requires_grad=p.requires_grad)
             for name, b in list(sub.named_buffers(recurse=False)):
                 if b is not None and b.is_floating_point() and b.dtype != dtype:
                     sub._buffers[name] = b.to(dtype)
@@ -278,7 +326,7 @@ class PrismOpenJev(nn.Module):
             ple_ids = torch.where(ids >= v_ple, torch.full_like(ids, pad), ids)
             ple_dev = text.embed_tokens_per_layer.weight.device
             ple = text.get_per_layer_inputs(ple_ids.to(ple_dev), None)  # table may live on CPU
-            kw["per_layer_inputs"] = ple.to(ids.device)
+            kw["per_layer_inputs"] = host_to_device(ple, ids.device)
         hs = self.backbone(**kw, attention_mask=self.masks(b), position_ids=pos,
                            use_cache=False).last_hidden_state.float()
         idx = b.flag_index

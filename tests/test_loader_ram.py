@@ -30,3 +30,13 @@ def test_fp16_request_loads_bf16_then_converts(monkeypatch):
     assert seen["dtype"] == torch.bfloat16
     assert {p.dtype for p in text.parameters()} == {torch.float16}
     assert text.config._attn_implementation == "sdpa"
+
+
+def test_inplace_cast_is_bit_exact_and_reuses_storage():
+    t = (torch.randn(3, 1000) * 5).to(torch.bfloat16)
+    ref = t.to(torch.float16)
+    ptr = t.data_ptr()
+    out = prism._cast(t, torch.float16, chunk=257)      # chunk not dividing numel
+    assert out.dtype == torch.float16 and out.shape == t.shape
+    assert out.data_ptr() == ptr                         # no second full copy
+    assert torch.equal(out, ref)

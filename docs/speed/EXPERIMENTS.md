@@ -83,3 +83,26 @@ do for a 2B LoRA forward/backward, so a large overhead is still hidden.
 4. **dtype (OJ-081).** `--dtype auto` chose bf16 on the T4 because `torch.cuda.is_bf16_supported()` counts emulated bf16;
    sm75 has no native bf16, so round 1 likely ran emulated bf16. Round 2 defaults to fp16 + GradScaler (`dtype` dim) and
    has its own baseline (yaml `round: 2`), since round 1's baseline also predates the OJ-080 mask fix.
+5. **Fixed global batch + fixed micro-batch (round 3, new study `openjev-speed-v2`).** Hypothesis: `bs` was a poor
+   Optuna dimension. It changed the samples per optimizer step, so it (a) dominated samples/s and the importances
+   (larger batches pad more but amortize per-step overhead), (b) changed the optimization itself: the gradient noise
+   scales with 1/batch and the best lr scales with the batch (Goyal et al. 2017, *Accurate, Large Minibatch SGD*,
+   arXiv:1706.02677; McCandlish et al. 2018, *An Empirical Model of Large-Batch Training*, arXiv:1812.06162: the
+   gradient noise scale sets how much a larger batch helps), and (c) confounded the quality guard, which compared the
+   loss drop after 2 optimizer steps of 2 to 16 samples. Change: yaml study settings `micro_batch: 8` and
+   `global_batch: 32` (grad_accum 4) for EVERY trial; one timed step = one optimizer step of 32 samples; samples/s =
+   32 x steps / seconds. `bs` (and `dtype`, `ple_cpu`) are `sample: false`; bench ignores `bs` at a fixed
+   micro-batch. A config that runs out of memory at micro-batch 8 is PRUNED as `infeasible_at_mb8` (never retried
+   smaller): a memory-saving technique gets credit only by making a config feasible at 8. The round baseline records
+   whether micro-batch 16 WOULD fit (study attr `mb16_fits_round_3`), only as information. Every trial trains on the
+   same frozen trial stream (`optuna_loop.py freeze`: 640 record ids stratified by source with the mixture weights;
+   sha in `trial_stream_sha`) for 1 warm-up step + 4 timed steps, so all trials time the same records.
+   **Guards are now comparable across trials:** the quality guard compares the probe-loss drop after the same warm-up
+   optimizer step(s), on the same 32-sample batches, against the round-3 baseline. Quality checkpoints
+   (`validate-plan`, PROFILE=optuna_validate) train best vs baseline for 150 optimizer steps and compare val
+   acc / nll / ece on a frozen, stratified ~400-record val set (accept if nll <= base + 0.05 and acc >= base - 1 pt;
+   with ~400 records the acc standard error is ~2 pt). Expected: importances that show real techniques, and a TPE that
+   no longer chases batch size. Open: `max_state_tokens` is still sampled and changes sequence lengths and quality the
+   same way; `ple_cpu` is PENDING a paired test (enqueue the baseline with ple_cpu 0 and 1). Round 2 note: every r2
+   trial ran ple_cpu=1 (sample: false dims were not written into trials.json, and train_prism defaults to 1).
+

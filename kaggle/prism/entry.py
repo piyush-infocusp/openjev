@@ -31,6 +31,7 @@ os.makedirs(OUT, exist_ok=True)
 # PROFILE "short": a ~1.5 h end-to-end check (SFT then RL) with fast evals.
 # PROFILE "full": the long run with a preflight first.
 # PROFILE "optuna": speed trials from trials.json (tools/optuna_loop.py propose), no training run.
+# PROFILE "optuna_validate": a quality checkpoint from validate.json (optuna_loop.py validate-plan).
 # A pushed script kernel gets no env vars, so `PROFILE=optuna build.sh` bakes PROFILE (and
 # the trials, as OPTUNA_TRIALS) into the staged copy of this file.
 PROFILE = os.environ.get("PROFILE", "short")
@@ -40,12 +41,28 @@ if PROFILE == "optuna":
         with open("trials.json", "w") as f:
             f.write(OPTUNA_TRIALS)
     print("=== OPTUNA trials ===\n" + open("trials.json").read(), flush=True)
+    # Round 3+: the frozen trial stream (record ids, bundled by build.sh); bench checks its sha.
+    stream = ["--trial-stream", "trial_stream.json"] if os.path.exists("trial_stream.json") else []
     subprocess.check_call([sys.executable, "bench_trials.py", "--trials", "trials.json",
                            "--trial-seconds", os.environ.get("TRIAL_SECONDS", "50"),
                            "--out", f"{OUT}/optuna_results.json",
                            "--model", "google/gemma-4-E2B-it", "--train", f"{data}/*.train.jsonl",
-                           "--bs", "4", "--max-state-tokens", "1024", "--grad-ckpt"])
+                           "--bs", "4", "--max-state-tokens", "1024", "--grad-ckpt", *stream])
     print("=== OPTUNA DONE ===", flush=True)
+    sys.exit(0)
+
+if PROFILE == "optuna_validate":
+    # Quality checkpoint (tools/optuna_loop.py validate-plan): best vs baseline config, real
+    # training steps, eval on the frozen val set. Not a speed trial.
+    if globals().get("OPTUNA_VALIDATE"):
+        with open("validate.json", "w") as f:
+            f.write(OPTUNA_VALIDATE)
+    print("=== OPTUNA VALIDATE ===\n" + open("validate.json").read(), flush=True)
+    subprocess.check_call([sys.executable, "bench_trials.py", "--validate", "validate.json",
+                           "--val-set", "val_set.json", "--out", f"{OUT}/validate_results.json",
+                           "--model", "google/gemma-4-E2B-it", "--train", f"{data}/*.train.jsonl",
+                           "--val", f"{data}/*.val.jsonl", "--max-state-tokens", "1024", "--grad-ckpt"])
+    print("=== OPTUNA VALIDATE DONE ===", flush=True)
     sys.exit(0)
 
 if PROFILE == "short":

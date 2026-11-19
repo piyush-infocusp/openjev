@@ -26,3 +26,39 @@ def test_ple_module_fully_on_cpu():
     assert tensors and all(t.device.type == "cpu" for t in tensors)
     assert m.flag_head.weight.device.type == "meta"
     assert m.backbone.embed_tokens.weight.device.type == "meta"
+
+
+def test_ple_host_to_device_pinned_non_blocking(monkeypatch):
+    """The looked-up PLE rows (ple_cpu=1) go CPU -> CUDA through pinned memory with
+    non_blocking=True, and the values are unchanged. A spy stands in for CUDA on CPU."""
+    from openjev import prism
+    x = torch.randn(2, 5, 3, 4)
+    assert prism.host_to_device(x, "cpu") is x                  # same device: no copy
+    calls = {}
+    real_to = torch.Tensor.to
+
+    def fake_pin(self):
+        calls["pinned"] = True
+        return self.clone()
+
+    def fake_to(self, *a, **k):
+        if a and torch.device(a[0]).type == "cuda":
+            calls["non_blocking"] = k.get("non_blocking")
+            return self.clone()                                   # "on the GPU"
+        return real_to(self, *a, **k)
+    monkeypatch.setattr(torch.Tensor, "pin_memory", fake_pin)
+    monkeypatch.setattr(torch.Tensor, "to", fake_to)
+    y = prism.host_to_device(x, torch.device("cuda"))
+    assert calls == {"pinned": True, "non_blocking": True}
+    assert torch.equal(y, x)
+
+
+def test_ple_host_to_device_real_cuda():
+    import pytest
+    if not torch.cuda.is_available():
+        pytest.skip("no CUDA")
+    from openjev import prism
+    x = torch.randn(2, 7, 3, 4)
+    y = prism.host_to_device(x, "cuda")
+    torch.cuda.synchronize()
+    assert y.is_cuda and torch.equal(y.cpu(), x)

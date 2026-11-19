@@ -27,7 +27,34 @@
 # Round of the study. Each round gets its own baseline trial (these defaults), and the
 # quality guard uses only the current round's baseline. Round 2: OJ-080 changed the Prism
 # mask and the defaults changed (ple_cpu 0, dtype fp16), so round 1's baseline is stale.
-round: 2
+# Round 3: fixed micro-batch and global batch (Idea 5), fixed trial data, so round 2's
+# numbers (one optimizer step per micro-batch of a sampled bs) are not comparable.
+round: 3
+
+# Optuna study in runs/optuna/study.db. Round 3 starts a NEW study so the dashboard,
+# the importances and TPE only see fair trials (fixed micro-batch, global batch, trial
+# data, mask and dtype). The legacy study "openjev-speed" (rounds 1-2) stays untouched.
+study_name: openjev-speed-v2
+
+# ---------------------------------------------------------------- study settings (constants)
+# Not sampled. propose writes them into every trials.json entry; bench_trials applies them.
+# Every timed step is ONE optimizer step of global_batch samples: micro_batch samples per
+# forward/backward, grad_accum = global_batch // micro_batch micro-steps, then the step.
+# A trial that runs out of memory at micro_batch is PRUNED as infeasible_at_mb<micro_batch>
+# (never retried smaller). Change micro_batch here only together with a new round.
+global_batch: 32
+micro_batch: 8
+warmup_steps: 1        # optimizer steps before the quality guard (same for every trial)
+timed_steps: 4         # optimizer steps in the timed loop: every trial times the same records
+diag_mb: 16            # round baseline only: one fwd+bwd at this micro-batch, recorded, never used
+# Frozen data (tools/optuna_loop.py freeze): the same record ids for every trial.
+trial_stream_len: 640  # >= (warmup_steps + timed_steps) * global_batch, with margin
+probe_n: 8             # fixed probe set for the quality guard (one per source, then round robin)
+# Quality checkpoints (tools/optuna_loop.py validate-plan, PROFILE=optuna_validate).
+validate_every: 30     # completed trials since the last checkpoint
+validate_steps: 150    # optimizer steps of real training per config (best and baseline)
+val_per_source: 50     # frozen val set: records per source, stratified by question type
+                       # and option-count bucket
 
 dimensions:
   - name: bs
@@ -36,7 +63,11 @@ dimensions:
     default: 4
     requires_reload: false
     implemented: true
-    idea: Micro-batch size. Larger batches use the GPU better but pad more (mixed 11- to 1000-token samples).
+    sample: false   # r3: replaced by the fixed micro_batch / global_batch settings (Idea 5)
+    idea: >-
+      Micro-batch size (rounds 1-2 only). It changed the samples per optimizer step, so it
+      confounded speed with optimization (gradient noise, lr) and the quality guard. From
+      round 3 bench ignores it when micro_batch is set. Old trials keep it as a param.
 
   - name: grad_ckpt
     type: categorical
@@ -102,6 +133,7 @@ dimensions:
       round 1 likely ran EMULATED bf16. fp16 (+ GradScaler, skipped steps recorded) is the
       round-2 default; bf16_emulated reproduces round 1; fp32 for reference.
       PyTorch AMP docs.
+    sample: false   # r2: TPE drew fp32 (does not fit a T4); bf16_emulated only via --enqueue-json
 
   - name: attn_backend
     type: categorical

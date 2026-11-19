@@ -48,7 +48,7 @@ import torch.nn.functional as F
 from openjev import add_special_tokens, target_index
 from openjev.data import read_jsonl
 from openjev.mix import Mixture
-from openjev.prism import PrismOpenJev, gemma_text_backbone, prism_collate
+from openjev.prism import PrismOpenJev, gemma_text_backbone, log_rss, prism_collate
 from openjev.rlcd import ece, soft_ece
 
 LORA_TARGETS = ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
@@ -263,7 +263,9 @@ def build(args, device, base: str | None = None):
     for p in model.parameters():
         if p.requires_grad:
             p.data = p.data.float()
-    return place(model, device, args.ple_cpu), tok, dtype
+    model = place(model, device, args.ple_cpu)
+    log_rss("after_place")
+    return model, tok, dtype
 
 
 def set_grad_ckpt(model, on: bool) -> None:

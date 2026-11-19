@@ -3,20 +3,36 @@
 Loading Gemma 4 E2B on Kaggle takes ~5 min, so the model is loaded once per group of
 trials that share the same `requires_reload` params (ple_cpu, dtype). Each trial:
 
-  1. restores the start weights (LoRA, flag head, template delta), the data stream
-     position and the seed, and builds a fresh optimizer, so all trials start equal;
-  2. applies its params (bs, grad_ckpt, max_state_tokens, torch_threads, sdpa_backend,
+  1. resets: the start weights (LoRA, flag head, template delta), no grads, the data
+     stream at its start, the seed; then a fresh optimizer, so all trials start equal;
+  2. applies its params (grad_ckpt, max_state_tokens, torch_threads, sdpa_backend,
      attn_backend; the attention backend is swapped at runtime, see openjev/attn_backends.py);
-  3. measures the loss on a fixed probe set (loss_start);
-  4. runs --warmup-steps SFT steps (one optimizer step each) and measures the probe
-     loss again (loss_guard). The quality guard uses this one: every trial has taken
-     the same number of optimizer steps here, whatever its speed;
-  5. runs a timed loop of real SFT steps on the real mixture for --trial-seconds
-     (at least one step), then measures loss_end (informational) and peak GPU memory;
-  6. profile=1 only: after all of the above (so samples/s, the guard and the data stream
+  3. round baseline only (`diag_mb` in its entry): one forward+backward at micro-batch
+     diag_mb (16) to record whether it WOULD fit (peak < 0.92 x GPU memory), then the
+     reset of step 1 again. It never changes the micro-batch;
+  4. measures the loss on a fixed probe set (loss_start);
+  5. runs the warm-up optimizer steps and measures the probe loss again (loss_guard).
+     The quality guard uses this one: every trial has taken the same optimizer steps on
+     the same records here, whatever its speed;
+  6. runs the timed loop, then measures loss_end (informational) and peak GPU memory;
+  7. profile=1 only: after all of the above (so samples/s, the guard and the data stream
      equal a non-profile twin), runs torch.profiler (CPU + CUDA) over --profile-steps more
-     steps and stores a compact table (top ops by self CUDA / self CPU time, and the share
-     of attention, matmul, mask building, PLE lookup, copies and collate) as "profile".
+     steps and stores a compact table as "profile".
+
+Step = ONE optimizer step. Round 3+ entries carry study settings ("bench": global_batch,
+micro_batch, warmup_steps, timed_steps): a step is grad_accum = global_batch / micro_batch
+micro-batches of micro_batch records (forward + backward each, loss / grad_accum), then one
+optimizer step, so samples/s = global_batch * steps / seconds at a FIXED micro-batch and
+global batch for every trial. The `bs` param is ignored then (recorded as bs_ignored). A
+trial that runs out of memory at that micro-batch is "infeasible_at_mb<micro_batch>"
+(pruned, never retried smaller). With timed_steps the timed loop is exactly that many
+steps (every trial times the same records; --trial-seconds is not used). Entries without
+settings (rounds 1-2) keep the old behaviour: one optimizer step per micro-batch of `bs`,
+timed for --trial-seconds.
+
+Data: with --trial-stream (round 3+), every trial consumes the frozen trial stream
+(openjev/trial_data.py, record ids) from its start, and the probe set is the frozen one;
+otherwise a seeded Mixture (rewound per trial) and its first --probe-n records.
 
 The fp16 GradScaler scale is carried from trial to trial inside a group, so a fresh
 2^16 scale does not skip the first steps of every trial; skipped steps are counted.
@@ -24,11 +40,17 @@ The fp16 GradScaler scale is carried from trial to trial inside a group, so a fr
 OOM, a missing SDPA kernel and other errors are caught per trial. Results go to
 --out (rewritten after every trial) and one JSON line per trial is printed.
 
+--validate FILE (quality checkpoint, PROFILE=optuna_validate; from optuna_loop.py
+validate-plan) runs instead: for each config (round best, round baseline), from the same
+start weights and the same seeded Mixture, `steps` optimizer steps of real SFT at the
+fixed micro-batch / global batch (lr: train_prism warm-up + cosine over the steps), then
+train_prism.evaluate on the frozen val set (--val-set): acc, nll, ece, per-source acc.
+
 Every flag train_prism.py knows (--model, --train, --lr, --dtype, --cpu, ...) is passed
 through; --bs, --max-state-tokens and --grad-ckpt are the defaults for trials that do
 not set them, and --max-state-tokens is also the probe truncation.
 
-  python bench_trials.py --trials trials.json --trial-seconds 50 \
+  python bench_trials.py --trials trials.json --trial-stream trial_stream.json \\
       --model google/gemma-4-E2B-it --train 'data/*.train.jsonl'
 """
 
@@ -39,6 +61,7 @@ import contextlib
 import copy
 import gc
 import glob
+import hashlib
 import json
 import math
 import random
@@ -50,8 +73,9 @@ import torch
 
 import train_prism as tp
 from openjev import attn_backends as ab
+from openjev import trial_data as td
 from openjev.mix import Mixture
-from openjev.prism import prism_collate
+from openjev.prism import log_rss, prism_collate
 
 # Params this script knows how to apply. A trial with any other param fails, so a
 # dimension marked `implemented: true` without code here never gives fake numbers.
@@ -61,18 +85,24 @@ RELOAD_PARAMS = {"ple_cpu", "dtype"}
 # yaml dtype choice -> train_prism --dtype. "bf16_emulated" is what --dtype auto picked on
 # T4 before OJ-081 (bf16 without native support on sm75).
 DTYPES = {"fp16": "fp16", "bf16_emulated": "bf16", "fp32": "fp32"}
+HEADROOM = 0.92        # a micro-batch "fits" if its peak memory < HEADROOM x GPU memory
 
 
 def parse(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, allow_abbrev=False,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--trials", default="trials.json")
-    ap.add_argument("--trial-seconds", type=float, default=50.0)
-    ap.add_argument("--warmup-steps", type=int, default=2)
-    ap.add_argument("--probe-n", type=int, default=8, help="records in the fixed probe set")
+    ap.add_argument("--trial-seconds", type=float, default=50.0,
+                    help="timed loop length for entries without timed_steps")
+    ap.add_argument("--warmup-steps", type=int, default=None,
+                    help="default: the entry's warmup_steps, else 2")
+    ap.add_argument("--probe-n", type=int, default=8, help="records in the fixed probe set (no stream)")
     ap.add_argument("--profile-steps", type=int, default=2, help="profiled steps (profile=1 trials)")
     ap.add_argument("--attn-chunk", type=int, default=ab.DEFAULT_CHUNK,
                     help="query rows per chunk for attn_backend=chunked_math")
+    ap.add_argument("--trial-stream", default="", help="frozen trial stream (optuna_loop.py freeze)")
+    ap.add_argument("--validate", default="", help="quality checkpoint plan (optuna_loop.py validate-plan)")
+    ap.add_argument("--val-set", default="", help="frozen val set for --validate")
     ap.add_argument("--out", default="/kaggle/working/out/optuna_results.json")
     own, rest = ap.parse_known_args(argv)
     return own, tp.parse(rest)
@@ -97,6 +127,26 @@ def build_args(targs, reload_params: dict):
         else:
             raise ValueError(f"reload param {k!r} has no handler in bench_trials.py")
     return a
+
+
+def settings_of(entry: dict, targs, own) -> dict:
+    """Effective step settings of a trials.json entry (see the module docstring)."""
+    st = dict(entry.get("bench") or {})
+    gb, mb = st.get("global_batch"), st.get("micro_batch")
+    if gb and mb:
+        gb, mb = int(gb), int(mb)
+        if mb < 1 or gb % mb:
+            raise ValueError(f"global_batch {gb} is not a multiple of micro_batch {mb}")
+        out = {"fixed_mb": True, "global_batch": gb, "micro_batch": mb, "grad_accum": gb // mb}
+    else:
+        bs = int(entry.get("params", {}).get("bs", targs.bs))
+        out = {"fixed_mb": False, "global_batch": bs, "micro_batch": bs, "grad_accum": 1}
+    w = own.warmup_steps if own.warmup_steps is not None else st.get("warmup_steps", 2)
+    out["warmup_steps"] = int(w)
+    out["timed_steps"] = int(st["timed_steps"]) if st.get("timed_steps") else None
+    out["diag_mb"] = int(st["diag_mb"]) if st.get("diag_mb") else None
+    out["trial_stream_sha"] = st.get("trial_stream_sha")
+    return out
 
 
 def sdpa_ctx(name):
@@ -125,6 +175,15 @@ def classify(e: BaseException, backend: str | None = None) -> str:
     return "error"
 
 
+def trial_status(e: BaseException, settings: dict, backend: str | None = None) -> str:
+    """classify(), but an OOM at the fixed micro-batch is infeasible_at_mb<mb> (pruned:
+    the config needs more memory than the round's micro-batch allows)."""
+    c = classify(e, backend)
+    if c == "oom" and settings.get("fixed_mb"):
+        return f"infeasible_at_mb{settings['micro_batch']}"
+    return c
+
+
 # ---------------------------------------------------------------- helpers
 
 def snapshot(model):
@@ -137,6 +196,15 @@ def restore(model, snap):
         if n in snap:
             p.copy_(snap[n])
             p.grad = None
+
+
+def reset(model, data, snap, data_state, seed):
+    """The trial reset: start weights, no grads, data stream at its start, seed."""
+    restore(model, snap)
+    model.zero_grad(set_to_none=True)
+    data.set_state(data_state)
+    random.seed(seed)
+    torch.manual_seed(seed)
 
 
 @torch.no_grad()
@@ -158,6 +226,20 @@ def clean(x):
     if isinstance(x, float):
         return round(x, 5) if math.isfinite(x) else None
     return x
+
+
+def ids_sha(ids) -> str:
+    return hashlib.sha256("\n".join(ids).encode()).hexdigest()[:16]
+
+
+def peak_gb(device):
+    """Peak reserved memory since the last reset (None on CPU). Tests monkeypatch it."""
+    return torch.cuda.max_memory_reserved() / 2**30 if device == "cuda" else None
+
+
+def mem_limit_gb(device):
+    """Total GPU memory (None on CPU). Tests monkeypatch it."""
+    return torch.cuda.mem_get_info()[1] / 2**30 if device == "cuda" else None
 
 
 # ---------------------------------------------------------------- profiler
@@ -270,36 +352,95 @@ def free(device):
         torch.cuda.empty_cache()
 
 
+# ---------------------------------------------------------------- one optimizer step
+
+def accum_step(model, opt, scaler, next_batch, accum: int, device, backend):
+    """ONE optimizer step: `accum` micro-batches (forward + backward, loss / accum),
+    then unscale, clip, step. Shared by the speed trials and the quality checkpoint.
+    Returns (mean micro-batch loss as a tensor, 1 if the fp16 scaler skipped the step)."""
+    total = None
+    for _ in range(accum):
+        b = next_batch().to(device)
+        with sdpa_ctx(backend):
+            with tp.autocast(device, model):
+                loss = tp.sft_loss(model.flag_logits(b), b)
+            scaler.scale(loss / accum).backward()
+        total = loss.detach() if total is None else total + loss.detach()
+    before = scaler.get_scale()            # scaler.step syncs anyway (found_inf)
+    tp.optimizer_step(opt, scaler)
+    return total / accum, int(scaler.is_enabled() and scaler.get_scale() < before)
+
+
+def mb_diag(model, tok, data, mst: int, mb: int, device, backend, pad_mult: int) -> dict:
+    """Would micro-batch `mb` fit? One forward + backward on the next `mb` stream records;
+    fits = no OOM and peak < HEADROOM x GPU memory. Only recorded, never used to pick the
+    micro-batch. The caller resets weights, grads and data afterwards."""
+    t0 = time.perf_counter()
+    free(device)
+    if device == "cuda":
+        torch.cuda.reset_peak_memory_stats()
+    oom, peak = False, None
+    try:
+        b = prism_collate(tok, data.take(mb), mst, pad_to_multiple_of=pad_mult).to(device)
+        with sdpa_ctx(backend):
+            with tp.autocast(device, model):
+                loss = tp.sft_loss(model.flag_logits(b), b)
+            loss.backward()
+        del b, loss
+        if device == "cuda":
+            torch.cuda.synchronize()
+        peak = peak_gb(device)
+    except Exception as e:
+        if classify(e) != "oom":
+            raise
+        oom = True
+    model.zero_grad(set_to_none=True)       # outside the except block: frees the tensors
+    free(device)
+    limit = mem_limit_gb(device)
+    fits = (not oom) and (peak is None or limit is None or peak < HEADROOM * limit)
+    return {"mb": mb, "fits": fits, "oom": oom, "peak_gb": peak, "limit_gb": limit,
+            "headroom": HEADROOM, "probe_s": time.perf_counter() - t0}
+
+
 # ---------------------------------------------------------------- one trial
 
-def run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device, dtype, own,
-              base_threads, scale):
+def run_trial(model, tok, data, data_state, snap, probe, targs, params, device, dtype, own,
+              base_threads, scale, settings=None):
     unknown = set(params) - TRIAL_PARAMS - RELOAD_PARAMS
     if unknown:
         raise ValueError(f"params {sorted(unknown)} have no handler in bench_trials.py")
+    settings = settings or settings_of({"params": params}, targs, own)
     attn = params.get("attn_backend", "sdpa_default")
     try:
         ab.set_attn_backend(model, attn, chunk=own.attn_chunk)
-        return _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device, dtype,
-                          own, base_threads, scale, attn)
+        return _run_trial(model, tok, data, data_state, snap, probe, targs, params, device, dtype,
+                          own, base_threads, scale, attn, settings)
     finally:
         ab.reset_attn_backend(model)   # a failed flex trial must not change the next trial
 
 
-def _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, device, dtype, own,
-               base_threads, scale, attn):
-    restore(model, snap)
-    mixture.set_state(mix_state)
-    random.seed(targs.seed)
-    torch.manual_seed(targs.seed)
-    bs = int(params.get("bs", targs.bs))
-    mst = int(params.get("max_state_tokens", targs.max_state_tokens))
+def apply_params(model, params, targs, base_threads):
+    """Runtime params -> (max_state_tokens, sdpa backend)."""
     tp.set_grad_ckpt(model, is_on(params["grad_ckpt"]) if "grad_ckpt" in params else targs.grad_ckpt)
     torch.set_num_threads(int(params.get("torch_threads", base_threads)))
-    backend = params.get("sdpa_backend", "default")
+    return int(params.get("max_state_tokens", targs.max_state_tokens)), params.get("sdpa_backend", "default")
+
+
+def _run_trial(model, tok, data, data_state, snap, probe, targs, params, device, dtype, own,
+               base_threads, scale, attn, st):
+    reset(model, data, snap, data_state, targs.seed)
+    mb, accum, gb = st["micro_batch"], st["grad_accum"], st["global_batch"]
+    mst, backend = apply_params(model, params, targs, base_threads)
     profile = is_on(params.get("profile", 0))
     # flex compiles one graph per shape: pad T to the BlockMask block so shapes repeat.
     pad_mult = ab.FLEX_BLOCK if attn == "flex" else 8
+    extra = {"attn_backend": attn, "dtype": str(dtype).replace("torch.", ""), "mb_used": mb,
+             "grad_accum": accum, "global_batch": gb, "fixed_mb": st["fixed_mb"]}
+    if st["fixed_mb"] and "bs" in params:
+        extra["bs_ignored"] = params["bs"]
+    if st["diag_mb"]:
+        extra["mb_diag"] = mb_diag(model, tok, data, mst, st["diag_mb"], device, backend, pad_mult)
+        reset(model, data, snap, data_state, targs.seed)   # no learning or data leaks into the trial
 
     free(device)
     if device == "cuda":
@@ -311,41 +452,45 @@ def _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, devic
     scale_start = scale["value"]
     loss_start = probe_loss(model, tok, probe, targs, device)
 
-    losses, tok_real, tok_pad, skipped = [], 0, 0, 0
+    losses, counts, skipped, ids = [], {"real": 0, "pad": 0}, 0, []
+
+    def next_batch():
+        with torch.profiler.record_function("oj::collate"):
+            recs = data.take(mb)
+            b = prism_collate(tok, recs, mst, pad_to_multiple_of=pad_mult)
+        ids.extend(r.id for r in recs)
+        counts["real"] += int(b.attention_mask.sum())          # CPU, no sync
+        counts["pad"] += b.attention_mask.numel()
+        return b
 
     def step():
         nonlocal skipped
-        with torch.profiler.record_function("oj::collate"):
-            b = prism_collate(tok, mixture.take(bs), mst, pad_to_multiple_of=pad_mult)
-        real, pad = int(b.attention_mask.sum()), b.attention_mask.numel()   # CPU, no sync
-        b = b.to(device)
-        with sdpa_ctx(backend):
-            with tp.autocast(device, model):
-                loss = tp.sft_loss(model.flag_logits(b), b)
-            scaler.scale(loss).backward()
-        before = scaler.get_scale()        # scaler.step syncs anyway (found_inf)
-        tp.optimizer_step(opt, scaler)
-        skipped += int(scaler.is_enabled() and scaler.get_scale() < before)
-        losses.append(loss.detach())
-        return real, pad
+        loss, sk = accum_step(model, opt, scaler, next_batch, accum, device, backend)
+        skipped += sk
+        losses.append(loss)
 
     t_w = time.perf_counter()
-    for _ in range(own.warmup_steps):
+    for _ in range(st["warmup_steps"]):
         step()
     if device == "cuda":
         torch.cuda.synchronize()
     warmup_s = time.perf_counter() - t_w      # includes flex compile time
+    warm_ids = list(ids)
     losses.clear()
     loss_guard = probe_loss(model, tok, probe, targs, device)
+    counts.update(real=0, pad=0)
     if device == "cuda":
         torch.cuda.synchronize()
     graphs0 = dynamo_graphs()
     t0 = time.perf_counter()
     steps = 0
     while True:
-        real, pad = step()
-        tok_real, tok_pad, steps = tok_real + real, tok_pad + pad, steps + 1
-        if time.perf_counter() - t0 >= own.trial_seconds:
+        step()
+        steps += 1
+        if st["timed_steps"]:
+            if steps >= st["timed_steps"]:
+                break
+        elif time.perf_counter() - t0 >= own.trial_seconds:
             break
     if device == "cuda":
         torch.cuda.synchronize()
@@ -357,7 +502,10 @@ def _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, devic
         scale["value"] = scaler.get_scale()
     nan = not all(math.isfinite(x) for x in train + [loss_start, loss_guard, loss_end])
     k = max(1, min(3, len(train) // 2))
-    extra = {"attn_backend": attn, "warmup_s": warmup_s, "dtype": str(dtype).replace("torch.", "")}
+    extra.update(warmup_s=warmup_s, warmup_ids_sha=ids_sha(warm_ids), data_ids_sha=ids_sha(ids),
+                 records_used=len(ids), timed_steps=st["timed_steps"])
+    if getattr(data, "wrapped", False):
+        extra["stream_wrapped"] = True
     if graphs0 is not None:
         # > 0: torch.compile (flex) built new graphs inside the timed loop, so this
         # trial's samples/s includes compile time.
@@ -367,21 +515,143 @@ def _run_trial(model, tok, mixture, mix_state, snap, probe, targs, params, devic
         ab.set_attn_backend(model, attn, chunk=own.attn_chunk, label=True)
         extra["profile"] = run_profile(step, device, own.profile_steps)
         extra["is_profile"] = True
-    return {**extra, "status": "nan" if nan else "ok", "steps": steps, "samples": steps * bs,
-            "seconds": sec, "samples_per_sec": steps * bs / sec, "s_per_sample": sec / (steps * bs),
-            "s_per_step": sec / steps, "tokens_per_sec": tok_real / sec,
-            "padded_tokens_per_sec": tok_pad / sec, "pad_frac": 1 - tok_real / max(tok_pad, 1),
+    n = steps * gb
+    return {**extra, "status": "nan" if nan else "ok", "steps": steps, "samples": n,
+            "seconds": sec, "samples_per_sec": n / sec, "s_per_sample": sec / n,
+            "s_per_step": sec / steps, "tokens_per_sec": counts["real"] / sec,
+            "padded_tokens_per_sec": counts["pad"] / sec,
+            "pad_frac": 1 - counts["real"] / max(counts["pad"], 1),
             "peak_mem_gb": peak, "loss_start": loss_start, "loss_guard": loss_guard,
-            "guard_steps": own.warmup_steps, "loss_end": loss_end, "scale_start": scale_start,
+            "guard_steps": st["warmup_steps"], "loss_end": loss_end, "scale_start": scale_start,
             "scale_end": scale["value"], "skipped_steps": skipped,
             "train_loss_first": sum(train[:k]) / k, "train_loss_last": sum(train[-k:]) / k}
+
+
+# ---------------------------------------------------------------- data
+
+def load_data(own, targs):
+    """(stream, probe, meta): the frozen trial stream (--trial-stream) or a seeded Mixture."""
+    if own.trial_stream:
+        frozen = json.loads(Path(own.trial_stream).read_text())
+        if td.sha_of({"stream": frozen["stream"], "probe": frozen["probe"]}) != frozen["sha"]:
+            raise SystemExit(f"{own.trial_stream}: content does not match its sha")
+        recs = td.load_refs(targs.train, frozen["stream"])
+        probe = td.load_refs(targs.train, frozen["probe"])
+        stems = [r[0] for r in frozen["stream"]]
+        return td.FixedStream(recs), probe, {"trial_stream_sha": frozen["sha"],
+                                             "trial_stream_len": len(recs), "stems": stems}
+    paths = sorted(glob.glob(targs.train))
+    if not paths:
+        raise SystemExit(f"no train files match {targs.train}")
+    mixture = Mixture(paths, alpha=targs.alpha, seed=targs.seed)
+    probe = mixture.take(own.probe_n)            # fixed probe set, same for every trial
+    return mixture, probe, {}
+
+
+def stream_tokens(tok, stream, stems) -> dict:
+    """p50 / p95 state tokens per source file of the stream (real tokenizer, so it can be
+    compared with data/STATS.md "State token length")."""
+    per: dict[str, list] = {}
+    for r, s in zip(stream.records, stems):
+        per.setdefault(s, []).append(len(tok(r.state, add_special_tokens=False)["input_ids"]))
+    return {s: {"n": len(v), "p50": td.quantile(v, 0.5), "p95": td.quantile(v, 0.95)}
+            for s, v in sorted(per.items())}
+
+
+# ---------------------------------------------------------------- quality checkpoint
+
+def run_validate(own, targs, device, meta, emit):
+    plan = json.loads(Path(own.validate).read_text())
+    st = plan["settings"]
+    gb, mb, n_steps = int(st["global_batch"]), int(st["micro_batch"]), int(st["steps"])
+    if gb % mb:
+        raise SystemExit(f"global_batch {gb} is not a multiple of micro_batch {mb}")
+    vs = json.loads(Path(own.val_set).read_text())
+    if st.get("val_set_sha") and vs["sha"] != st["val_set_sha"]:
+        raise SystemExit(f"val set sha {vs['sha']} != planned {st['val_set_sha']}")
+    val = td.load_refs(targs.val, vs["records"])
+    paths = sorted(glob.glob(targs.train))
+    # The training records: steps x global_batch refs sampled like the Mixture (per-source
+    # counts by the alpha weights, seeded), loaded by line. The full Mixture (403k records)
+    # costs ~1.9 GB host RAM before the model load; this holds only what is trained on.
+    log_rss("start")
+    refs = td.freeze_stream(paths, n_steps * gb, 0, alpha=targs.alpha, seed=targs.seed, check=False)
+    mixture = td.FixedStream(td.load_refs(paths, refs["stream"]))
+    state0 = mixture.get_state()
+    log_rss("after_data")
+    meta.update(validate=True, plan=st, train_refs_sha=refs["sha"], val_set_sha=vs["sha"], val_n=len(val), steps=n_steps,
+                global_batch=gb, micro_batch=mb)
+    base_threads = torch.get_num_threads()
+    model = None
+    for cfg in plan["configs"]:
+        params = cfg["params"]
+        r = {"name": cfg["name"], "trial_number": cfg.get("trial_number"), "params": params,
+             "steps_planned": n_steps, "global_batch": gb, "micro_batch": mb, "grad_accum": gb // mb}
+        failed = None
+        try:
+            model = None
+            free(device)
+            random.seed(targs.seed)
+            torch.manual_seed(targs.seed)
+            reload = {k: params[k] for k in sorted(RELOAD_PARAMS) if k in params}
+            log_rss("before_load")
+            model, tok, dtype = tp.build(build_args(targs, reload), device)
+            model.train()
+            r.update(_validate_one(model, tok, mixture, state0, val, targs, params, device, dtype,
+                                   own, base_threads, gb, mb, n_steps))
+        except Exception as e:
+            st_ = {"fixed_mb": True, "micro_batch": mb}
+            failed = (trial_status(e, st_, params.get("attn_backend")), f"{type(e).__name__}: {e}"[:400],
+                      traceback.format_exc()[-1500:])
+        if failed:
+            r.update(status=failed[0], error=failed[1])
+            print(failed[2], flush=True)
+        model = None
+        free(device)
+        emit(r)
+    torch.set_num_threads(base_threads)
+
+
+def _validate_one(model, tok, mixture, state0, val, targs, params, device, dtype, own,
+                  base_threads, gb, mb, n_steps):
+    attn = params.get("attn_backend", "sdpa_default")
+    ab.set_attn_backend(model, attn, chunk=own.attn_chunk)
+    try:
+        mixture.set_state(state0)
+        mst, backend = apply_params(model, params, targs, base_threads)
+        pad_mult = ab.FLEX_BLOCK if attn == "flex" else 8
+        opt = tp.make_optimizer(model, targs)
+        warm = max(1, int(targs.warmup * n_steps))          # same schedule as train_prism
+        sched = torch.optim.lr_scheduler.LambdaLR(
+            opt, lambda s: min(1.0, (s + 1) / warm) * 0.5 * (1 + math.cos(math.pi * min(1.0, s / n_steps))))
+        scaler = torch.amp.GradScaler("cuda", enabled=(device == "cuda" and dtype == torch.float16))
+        losses, skipped = [], 0
+        t0 = time.perf_counter()
+        for _ in range(n_steps):
+            loss, sk = accum_step(model, opt, scaler,
+                                  lambda: prism_collate(tok, mixture.take(mb), mst, pad_to_multiple_of=pad_mult),
+                                  gb // mb, device, backend)
+            sched.step()
+            losses.append(float(loss))
+            skipped += sk
+        sec = time.perf_counter() - t0
+        eargs = copy.copy(targs)
+        eargs.bs, eargs.max_state_tokens = mb, mst
+        with sdpa_ctx(backend):
+            m = tp.evaluate(model, tok, val, eargs, device)
+    finally:
+        ab.reset_attn_backend(model)
+    k = max(1, min(10, len(losses) // 2))
+    nan = not (all(math.isfinite(x) for x in losses) and math.isfinite(m["nll"]))
+    return {"status": "nan" if nan else "ok", "steps": n_steps, "seconds": sec,
+            "skipped_steps": skipped, "train_loss_first": sum(losses[:k]) / k,
+            "train_loss_last": sum(losses[-k:]) / k, "val": m}
 
 
 # ---------------------------------------------------------------- main
 
 def main(argv=None):
     own, targs = parse(argv)
-    trials = json.loads(Path(own.trials).read_text())
     device = tp.pick_device(targs)
     n_gpu = torch.cuda.device_count() if device == "cuda" else 0
     meta = {"device": device, "n_gpu": n_gpu,
@@ -400,13 +670,22 @@ def main(argv=None):
         tmp.write_text(json.dumps({"meta": meta, "results": results}, indent=1))
         tmp.replace(out)
 
-    paths = sorted(glob.glob(targs.train))
-    if not paths:
-        raise SystemExit(f"no train files match {targs.train}")
-    mixture = Mixture(paths, alpha=targs.alpha, seed=targs.seed)
-    probe = mixture.take(own.probe_n)            # fixed probe set, same for every trial
-    mix_state = mixture.get_state()
+    if own.validate:
+        run_validate(own, targs, device, meta, emit)
+        print(json.dumps({"validate_done": len(results), "out": str(out)}), flush=True)
+        return
+
+    trials = json.loads(Path(own.trials).read_text())
+    log_rss("start")
+    data, probe, dmeta = load_data(own, targs)
+    log_rss("after_data")
+    meta.update({k: v for k, v in dmeta.items() if k != "stems"})
+    data_state = data.get_state()
     base_threads = torch.get_num_threads()
+    want_sha = {(t.get("bench") or {}).get("trial_stream_sha") for t in trials} - {None}
+    if want_sha and want_sha != {dmeta.get("trial_stream_sha")}:
+        raise SystemExit(f"trials.json was proposed for trial stream {sorted(want_sha)}, "
+                         f"but --trial-stream is {dmeta.get('trial_stream_sha')}")
 
     groups: dict[tuple, list] = {}
     for t in trials:
@@ -434,9 +713,12 @@ def main(argv=None):
             # rows are then equal, so loss_start matches across reload groups.
             random.seed(targs.seed)
             torch.manual_seed(targs.seed)
+            log_rss("before_load")
             model, tok, dtype = tp.build(build_args(targs, dict(key)), device)
             model.train()
             snap = snapshot(model)
+            if dmeta.get("stems") and "stream_state_tokens" not in meta:
+                meta["stream_state_tokens"] = stream_tokens(tok, data, dmeta["stems"])
             try:
                 kernels = ab.sdpa_eligibility(model, device, dtype)
             except Exception as e:  # diagnostics only
@@ -454,15 +736,20 @@ def main(argv=None):
         for t in group:
             r = {"trial_number": t["trial_number"], "params": t["params"], "n_gpu": n_gpu,
                  "gpu_name": meta["gpu_name"], "group_load_s": load_s}
+            if dmeta.get("trial_stream_sha"):
+                r["trial_stream_sha"] = dmeta["trial_stream_sha"]
             if kernels:
                 r["sdpa_kernels"] = kernels
-            failed = None
+            failed, st = None, None
             try:
-                r.update(run_trial(model, tok, mixture, mix_state, snap, probe, targs, t["params"],
-                                   device, dtype, own, base_threads, scale))
+                st = settings_of(t, targs, own)
+                r.update(mb_used=st["micro_batch"], grad_accum=st["grad_accum"],
+                         global_batch=st["global_batch"])
+                r.update(run_trial(model, tok, data, data_state, snap, probe, targs, t["params"],
+                                   device, dtype, own, base_threads, scale, st))
             except Exception as e:
-                failed = (classify(e, t["params"].get("attn_backend")), f"{type(e).__name__}: {e}"[:400],
-                          traceback.format_exc()[-1500:])
+                failed = (trial_status(e, st or {}, t["params"].get("attn_backend")),
+                          f"{type(e).__name__}: {e}"[:400], traceback.format_exc()[-1500:])
             if failed:
                 # Free outside the except block: the traceback holds the tensors.
                 r.update(status=failed[0], error=failed[1])

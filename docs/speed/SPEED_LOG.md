@@ -35,6 +35,10 @@ effective T4 fp16.
 - Round 2: `attn_backend` swaps the attention backend at runtime (`openjev/attn_backends.py`, no
   reload). A `profile=1` trial (never drawn by TPE; enqueue it with `propose --enqueue-json`) adds
   a torch.profiler table after its timed loop, so its samples/s still counts.
+- Round 3 (Idea 5, study `openjev-speed-v2`): micro-batch 8 and global batch 32 are fixed study settings in
+  the yaml; each timed step is one optimizer step of 32 samples (1 warm-up + 4 timed steps on the frozen
+  trial stream). Quality checkpoints (best vs baseline, 150 real steps, frozen val set) run as a separate
+  `PROFILE=optuna_validate` kernel.
 
 ## Techniques
 
@@ -45,6 +49,7 @@ effective T4 fp16.
 | OJ-072 | Option sub-sampling in training: keep the gold option and ≤24 negatives, and use all options in eval | clinc150 and banking77 templates are about 1000 tokens because of the options | Negative sampling in classification heads: Mikolov et al. 2013, *Distributed Representations of Words and Phrases*, arXiv:1310.4546 | todo | |
 | OJ-060 | Hierarchical packing (source → length bucket → first-fit-decreasing rows ≤2048) with a doc-id block-diagonal mask and positions that restart | Removes padding waste from mixing 11-token and 1000-token samples | Krell et al. 2021, *Efficient Sequence Packing without Cross-contamination*, arXiv:2107.02027 | todo | |
 | OJ-067 | `--max-state-tokens 2048` after packing | Quality (53% of helpsteer3 states are cut), not speed | EDA notebook | todo | |
+| Idea 5 | Optuna round 3: fixed micro-batch 8 × grad_accum 4 = global batch 32 for every trial, frozen trial stream, `bs`/`dtype`/`ple_cpu` not sampled, new study `openjev-speed-v2`, OOM at mb 8 = pruned `infeasible_at_mb8` | Batch size confounded speed with optimization (gradient noise, lr) and the quality guard; fixed batches make samples/s and guards comparable | Goyal et al. 2017, arXiv:1706.02677; McCandlish et al. 2018, arXiv:1812.06162 | harness done, round 3 not run | |
 
 ### Compute and memory
 

@@ -21,3 +21,4 @@ docs/research/**/papers/
 *.pt
 .env
 kaggle/prism/trials.json
+kaggle/prism/validate.json
