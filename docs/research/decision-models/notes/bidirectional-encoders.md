@@ -1,0 +1,5 @@
+# Bidirectional adaptation of decoders (background for the Sarvam-style state block)
+- BidirLM (arXiv 2604.02045, 2026-04-02, Boizard et al.): "the critical role of an often-omitted prior masking phase"; linear weight merging to limit forgetting; releases BidirLM-270M/1B (Gemma3), 0.6B/1.7B (Qwen3), Omni-2.5B (text, vision, audio) (PDF read partially).
+- Prism-1 evidence (prism1-ntu.md): untrained bidirectional prompt on instruct models scores 23%/20% vs 68% for causal blocks; training repairs in-distribution but trails 7-16 points on held-out tasks. So Sarvam's bidirectional state block needs enough LoRA training; the claimed +3 points (Sarvam blog) is unverified independently.
+- Gemma Encoder (2503.02656): bidirectional > causal on Gemma-2 2B/9B (snippet only; unverified). LLM2Vec (2404.05961) is the original recipe (downloaded, unread). T5Gemma 2 (2512.14856): 270M-270M, 1B-1B, 4B-4B; pretrained only (snippet).
+Recommendation: A/B (a) causal state block, (b) bidirectional state block with MNTP-style warm-up, on held-out tasks, before committing.
