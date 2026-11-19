@@ -1,0 +1,722 @@
+<title>KL and Soft ECE</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#faf9f6; --surface:#ffffff; --surface2:#f1efe9; --ink:#1f2328; --muted:#5d636b; --line:#d9d5cb;
+  --accent:#2b5fa8; --accent-soft:#dbe6f5; --accent2:#c2561c; --accent2-soft:#f6e1d3; --ok:#2e7d5b; --ok-soft:#d9eee3;
+  --sans:'Instrument Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  --mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14171c; --surface:#1c2027; --surface2:#242932; --ink:#e6e3dc; --muted:#9aa1ab; --line:#363c47;
+    --accent:#7fb0f0; --accent-soft:#25364d; --accent2:#f0a070; --accent2-soft:#4a3326; --ok:#6fcf9f; --ok-soft:#1f3a2f;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14171c; --surface:#1c2027; --surface2:#242932; --ink:#e6e3dc; --muted:#9aa1ab; --line:#363c47;
+  --accent:#7fb0f0; --accent-soft:#25364d; --accent2:#f0a070; --accent2-soft:#4a3326; --ok:#6fcf9f; --ok-soft:#1f3a2f;
+}
+*{box-sizing:border-box}
+html{color-scheme:light dark}
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;overflow-x:hidden}
+.wrap{max-width:1080px;margin:0 auto;padding:20px max(16px,env(safe-area-inset-right,0px)) 60px max(16px,env(safe-area-inset-left,0px));}
+header.top{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+h1{font-size:clamp(26px,5vw,36px);line-height:1.15;margin:4px 0 6px;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:0;max-width:60ch}
+h2{font-size:clamp(22px,4vw,28px);margin:6px 0 10px;line-height:1.2}
+h3{font-size:19px;margin:30px 0 8px;line-height:1.3}
+p{margin:0 0 12px;max-width:70ch}
+ul,ol{margin:0 0 12px;padding-left:22px;max-width:70ch}
+li{margin-bottom:5px}
+code,.mono{font-family:var(--mono);font-size:.9em}
+code{background:var(--surface2);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+button{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 12px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,svg:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.on{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+.layout{display:grid;grid-template-columns:200px minmax(0,1fr);gap:28px;margin-top:14px}
+nav.steps{position:sticky;top:14px;align-self:start}
+nav.steps ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+nav.steps li{margin:0}
+nav.steps button{width:100%;text-align:left;border:1px solid transparent;background:transparent;padding:8px 10px;border-radius:8px;display:flex;gap:8px;align-items:baseline;color:var(--muted)}
+nav.steps button .n{font-family:var(--mono);font-size:12px;opacity:.8}
+nav.steps button[aria-current="step"]{background:var(--accent-soft);color:var(--ink);border-color:var(--accent)}
+@media (max-width:820px){
+  .layout{grid-template-columns:minmax(0,1fr);gap:12px}
+  nav.steps{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0;border-bottom:1px solid var(--line)}
+  nav.steps ol{flex-direction:row;overflow-x:auto;gap:6px;scrollbar-width:thin}
+  nav.steps button{width:auto;white-space:nowrap;padding:6px 10px;border-color:var(--line)}
+}
+section.page{min-width:0}
+section.page[hidden]{display:none}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin:14px 0;min-width:0}
+.card h4{margin:0 0 8px;font-size:15px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.note{border-left:4px solid var(--accent);background:var(--accent-soft);padding:10px 14px;border-radius:0 8px 8px 0;margin:14px 0;max-width:72ch}
+.warn{border-left-color:var(--accent2);background:var(--accent2-soft)}
+.formula{font-family:var(--mono);background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:10px 0;overflow-wrap:anywhere;font-size:15px}
+.ctrl{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;margin:8px 0}
+.ctrl label{font-weight:500}
+.ctrl output{font-family:var(--mono);min-width:3.2em;text-align:right}
+input[type=range]{width:100%;accent-color:var(--accent);min-width:0}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px;margin:10px 0}
+.stat{background:var(--surface2);border-radius:8px;padding:8px 10px}
+.stat b{display:block;font-family:var(--mono);font-size:18px}
+.stat span{font-size:13px;color:var(--muted)}
+.stat.hl{background:var(--accent-soft)}
+svg.chart{width:100%;height:auto;display:block;touch-action:none;max-width:520px;margin:0 auto}
+.tx{fill:var(--muted);font:10px var(--mono)}
+.tx2{fill:var(--ink);font:11px var(--sans)}
+.grid{stroke:var(--line);stroke-width:1}
+.axis{stroke:var(--muted);stroke-width:1}
+.diag{stroke:var(--muted);stroke-dasharray:4 3;fill:none}
+.barAcc{fill:var(--accent);opacity:.85}
+.barGap{fill:var(--accent2);opacity:.55}
+.barCnt{fill:var(--muted);opacity:.5}
+.tick2{stroke:var(--accent2);stroke-width:2}
+.lnA{stroke:var(--accent);fill:none;stroke-width:2.5}
+.lnB{stroke:var(--accent2);fill:none;stroke-width:2}
+.lnM{stroke:var(--muted);fill:none;stroke-width:1;opacity:.55}
+.mk{stroke:var(--ink);stroke-width:1;stroke-dasharray:3 3}
+.fillA{fill:var(--accent)}.fillB{fill:var(--accent2)}
+.bar-p{fill:var(--accent)}.bar-q{fill:var(--accent2)}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--muted);margin:6px 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{border-bottom:1px solid var(--line);padding:7px 8px;text-align:left;vertical-align:top}
+th{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+td.num,th.num{text-align:right;font-family:var(--mono)}
+.tablewrap{overflow-x:auto;max-width:100%}
+@media (max-width:720px){
+  table.cmp thead{display:none}
+  table.cmp tr{display:block;border:1px solid var(--line);border-radius:10px;margin:0 0 12px;padding:6px 10px;background:var(--surface)}
+  table.cmp td{display:block;border:0;padding:4px 0}
+  table.cmp td::before{content:attr(data-l);display:block;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  table.cmp td:first-child{font-weight:600;font-size:17px}
+  table.cmp td:first-child::before{display:none}
+}
+.timeline{list-style:none;padding:0;margin:10px 0;border-left:2px solid var(--line)}
+.timeline li{position:relative;padding:0 0 14px 18px;margin:0}
+.timeline li::before{content:"";position:absolute;left:-7px;top:7px;width:12px;height:12px;border-radius:50%;background:var(--accent);border:2px solid var(--bg)}
+.timeline .yr{font-family:var(--mono);font-weight:500;color:var(--accent)}
+.unv{color:var(--accent2);font-size:.88em;font-weight:500;white-space:nowrap}
+.dots{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.dot{width:26px;height:26px;border-radius:50%;border:2px solid var(--ok);background:var(--ok)}
+.dot.no{background:transparent;border-color:var(--accent2)}
+.pager{display:flex;justify-content:space-between;gap:10px;margin-top:34px;flex-wrap:wrap}
+dl.gl dt{font-weight:600;margin-top:12px}
+dl.gl dd{margin:2px 0 0;max-width:70ch;color:var(--muted)}
+.bars3 .row{display:grid;grid-template-columns:minmax(90px,130px) minmax(0,1fr) 64px;gap:8px;align-items:center;margin:6px 0;font-size:14px}
+.bars3 .bar{height:14px;border-radius:4px;background:var(--surface2);overflow:hidden}
+.bars3 .bar i{display:block;height:100%;background:var(--accent)}
+.bars3 .row:nth-child(2) .bar i{background:var(--accent2)}
+.bars3 .row:nth-child(3) .bar i{background:var(--ok)}
+.bars3 .row span.v{font-family:var(--mono);text-align:right}
+.push{font-size:14px;color:var(--muted)}
+.sr{position:absolute;left:-9999px}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <div>
+    <h1>KL and Soft ECE</h1>
+    <p class="sub">Two terms in our training loss. One keeps the model honest about its confidence. The other keeps it close to where it started.</p>
+  </div>
+  <button id="themeBtn" type="button" aria-label="Toggle light and dark theme">Theme</button>
+</header>
+
+<div class="layout">
+<nav class="steps" aria-label="Sections"><ol id="stepList"></ol></nav>
+<main id="pages">
+
+<!-- 1 -->
+<section class="page" data-title="The problem" id="p1">
+<h2>1. The problem with confidence</h2>
+<p>A model does not only give an answer. It also gives a number that says how sure it is. That number is only useful if it is honest.</p>
+<p>The rule is simple. If a model says "90% sure" many times, it should be right about 9 times out of 10. When this holds, we say the model is <b>calibrated</b>.</p>
+
+<h3>Example 1: the weather forecaster</h3>
+<p>A forecaster says "90% chance of rain" on 10 different days. If the forecaster is calibrated, it rains on about 9 of those days. If it rains on only 5, the forecaster is over-confident. If it rains on all 10, the forecaster is under-confident. In both cases you cannot trust the number.</p>
+
+<h3>Example 2: the decision model</h3>
+<p>Our model reads a support ticket and decides where it goes: <b>billing</b> or <b>bugs</b>. It also says how sure it is. Suppose it says "90% billing" on 10 tickets. Move the slider to see how many were really billing.</p>
+<div class="card">
+  <h4>Try it</h4>
+  <div class="ctrl"><label for="tally">Really billing</label><input id="tally" type="range" min="0" max="10" value="6"><output id="tallyO">6/10</output></div>
+  <div class="dots" id="dots" aria-hidden="true"></div>
+  <p id="tallyMsg" style="margin:0"></p>
+</div>
+<p>Why does this matter to us? A ticket router can act on confidence. High confidence: route it by itself. Low confidence: ask a human. This only works if "90%" really means about 90%.</p>
+<div class="note">Accuracy and calibration are different. A model can be 70% accurate and perfectly calibrated: it says "70%" and is right 70% of the time. A model can also be 95% accurate and badly calibrated.</div>
+<div class="pager" data-nav></div>
+</section>
+
+<!-- 2 -->
+<section class="page" data-title="Calibration and ECE" id="p2">
+<h2>2. Calibration and ECE</h2>
+<h3>The reliability diagram</h3>
+<p>To check calibration we sort predictions into <b>bins</b> by confidence. For example: all predictions between 0.8 and 0.9 go in one bin. In each bin we compare two numbers:</p>
+<ul>
+<li><b>conf</b>: the average confidence of the predictions in the bin.</li>
+<li><b>acc</b>: the share of those predictions that were right.</li>
+</ul>
+<p>If the model is calibrated, acc equals conf in every bin. The bars then sit on the dashed diagonal.</p>
+<h3>The formula</h3>
+<div class="formula">ECE = &Sigma;<sub>b</sub> (n<sub>b</sub> / N) &middot; | acc<sub>b</sub> &minus; conf<sub>b</sub> |</div>
+<p>n<sub>b</sub> is the number of predictions in bin b. N is the total. So ECE is the average gap between confidence and accuracy, with big bins counting more. Zero is perfect. Smaller is better.</p>
+
+<h3>Play with it</h3>
+<p>Below are 150 fake tickets with 3 possible routes. The model's raw scores are fixed. The <b>temperature</b> T divides the scores before softmax. Small T makes the model sharper and over-confident. Large T makes it flatter and under-confident. T = 1 is close to calibrated here.</p>
+<div class="card">
+  <div class="ctrl"><label for="tmp">Temperature T</label><input id="tmp" type="range" min="0.3" max="3" step="0.05" value="1"><output id="tmpO">1.00</output></div>
+  <div class="ctrl"><label for="nb">Bins</label><input id="nb" type="range" min="3" max="20" step="1" value="10"><output id="nbO">10</output></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0">
+    <button type="button" data-t="0.5">Over-confident (T 0.5)</button>
+    <button type="button" data-t="1">Calibrated (T 1)</button>
+    <button type="button" data-t="2.2">Under-confident (T 2.2)</button>
+  </div>
+  <div class="stats">
+    <div class="stat hl"><b id="sECE">-</b><span>ECE (hard bins)</span></div>
+    <div class="stat"><b id="sSoft">-</b><span>soft ECE</span></div>
+    <div class="stat"><b id="sBrier">-</b><span>Brier</span></div>
+    <div class="stat"><b id="sNLL">-</b><span>NLL</span></div>
+    <div class="stat"><b id="sAcc">-</b><span>accuracy</span></div>
+    <div class="stat"><b id="sConf">-</b><span>mean confidence</span></div>
+  </div>
+  <p id="relMsg" style="margin:0 0 8px"></p>
+  <svg id="rel" class="chart" viewBox="0 0 360 345" role="img" aria-label="Reliability diagram"></svg>
+  <div class="legend"><span><i style="background:var(--accent)"></i>accuracy in bin</span><span><i style="background:var(--accent2)"></i>gap to confidence</span><span><i style="background:var(--muted);opacity:.5"></i>count in bin (bottom)</span></div>
+</div>
+<p><b>Brier</b> is the average squared error of the probabilities: &Sigma;<sub>k</sub> (p<sub>k</sub> &minus; y<sub>k</sub>)&sup2; per ticket, where y is 1 for the right route and 0 for the others. <b>NLL</b> is the average of &minus;log of the probability given to the right route. Both are "proper" scores: they are lowest when the probabilities are honest. Watch NLL: it is lowest near T = 1.</p>
+
+<h3>Why hard bins cannot be trained on</h3>
+<p>We want to put ECE into a loss and follow its gradient. There is a catch. A prediction belongs to exactly one bin. As its confidence moves from 0.799 to 0.801, it jumps from one bin to the next. The "bin weight" is a step function. A step function has zero slope almost everywhere, so the gradient says nothing.</p>
+<p><b>Soft ECE</b> fixes this. Every prediction joins every bin, but with a smooth weight. The weight of bin b for confidence c is a Gaussian bump around the bin centre:</p>
+<div class="formula">g<sub>b</sub>(c) = exp( &minus; ((c &minus; centre<sub>b</sub>) &middot; bins)&sup2; )<br>w<sub>b</sub>(c) = g<sub>b</sub>(c) / &Sigma;<sub>j</sub> g<sub>j</sub>(c)</div>
+<p>Then n<sub>b</sub> becomes the sum of weights, acc<sub>b</sub> and conf<sub>b</sub> become weighted averages, and the same ECE formula is used. This is exactly what <code>soft_ece</code> does in <code>openjev/rlcd.py</code>. With more bins, the bumps get narrower. Try it.</p>
+<div class="card">
+  <div class="ctrl"><label for="wc">Confidence c</label><input id="wc" type="range" min="0" max="1" step="0.005" value="0.47"><output id="wcO">0.47</output></div>
+  <div class="ctrl"><label for="wb">Bins</label><input id="wb" type="range" min="3" max="20" step="1" value="10"><output id="wbO">10</output></div>
+  <div class="grid2">
+    <div>
+      <h4>Weight of the bin that holds c, as c moves</h4>
+      <svg id="wCurves" class="chart" viewBox="0 0 360 230" role="img" aria-label="Hard step weight and soft Gaussian weight of one bin versus confidence"></svg>
+      <div class="legend"><span><i style="background:var(--accent2)"></i>hard (step)</span><span><i style="background:var(--accent)"></i>soft (smooth)</span><span><i style="background:var(--muted);opacity:.5"></i>other bins (soft)</span></div>
+    </div>
+    <div>
+      <h4>Weights this one prediction gives to each bin</h4>
+      <svg id="wBars" class="chart" viewBox="0 0 360 230" role="img" aria-label="Weights per bin for the chosen confidence"></svg>
+      <div class="legend"><span><i style="background:var(--accent2)"></i>hard</span><span><i style="background:var(--accent)"></i>soft</span></div>
+    </div>
+  </div>
+  <p class="push" id="wSigma"></p>
+  <h4 style="margin-top:14px">ECE as T changes (same 150 tickets, same bins)</h4>
+  <svg id="eceT" class="chart" viewBox="0 0 360 230" role="img" aria-label="Hard and soft ECE against temperature"></svg>
+  <div class="legend"><span><i style="background:var(--accent2)"></i>hard ECE (jumps)</span><span><i style="background:var(--accent)"></i>soft ECE (smooth)</span></div>
+  <p class="push">Soft ECE is not equal to hard ECE. It is a smooth stand-in that moves the same way. Its bumps overlap, so it blurs neighbouring bins a little.</p>
+</div>
+<div class="note">In our code the 0/1 "was it right" flag is not differentiable. The gradient flows through the confidence <code>conf</code> and through the soft weights. So soft ECE pushes each confidence toward the accuracy of the bin it sits in. When the model is over-confident it pushes confidence down, and the other way round.</div>
+<div class="pager" data-nav></div>
+</section>
+
+<!-- 3 -->
+<section class="page" data-title="History of calibration" id="p3">
+<h2>3. A short history of calibration</h2>
+<p>Dates and titles below are from memory of the literature. Where I am less sure, the line says "(unverified)".</p>
+<ul class="timeline">
+<li><span class="yr">1950</span> <b>Brier.</b> "Verification of forecasts expressed in terms of probability", in <i>Monthly Weather Review</i>. A squared-error score for weather forecasts that give probabilities. This is the Brier score.</li>
+<li><span class="yr">1973</span> <b>Murphy.</b> "A new vector partition of the probability score" (<i>Journal of Applied Meteorology</i>). The Brier score splits into <b>reliability</b> (calibration error), <b>resolution</b> (how well the forecasts separate cases) and <b>uncertainty</b> (how hard the problem is). Calibration became one named part of forecast quality.</li>
+<li><span class="yr">1999</span> <b>Platt.</b> "Probabilistic outputs for support vector machines". Fit a sigmoid on a model's scores to turn them into probabilities. Called Platt scaling.</li>
+<li><span class="yr">2002</span> <b>Zadrozny and Elkan.</b> Isotonic regression for calibrating classifier scores. A step-wise, increasing map from score to probability. <span class="unv">(year unverified)</span></li>
+<li><span class="yr">2015</span> <b>Naeini, Cooper and Hauskrecht.</b> "Obtaining well calibrated probabilities using Bayesian binning" (AAAI). This paper named <b>Expected Calibration Error (ECE)</b> and Maximum Calibration Error (MCE) in the form we use today.</li>
+<li><span class="yr">2017</span> <b>Guo, Pleiss, Sun and Weinberger.</b> "On Calibration of Modern Neural Networks" (ICML). Older small nets were fairly calibrated. Modern deep nets are <b>over-confident</b>. A one-number fix, <b>temperature scaling</b>, works very well. It is Platt scaling with one parameter T on the logits.</li>
+<li><span class="yr">2018</span> <b>Kumar, Sarawagi and Jain.</b> "Trainable calibration measures for neural networks from kernel mean embeddings" (ICML). <b>MMCE</b>: a calibration penalty that is differentiable, so it can be added to the training loss.</li>
+<li><span class="yr">2021</span> <b>Karandikar et al.</b> "Soft calibration objectives for neural networks": soft-binned calibration error used as a training objective. <span class="unv">(authors, year and venue unverified)</span> Our soft ECE is in the same line: smooth the bins, then train on the result.</li>
+</ul>
+<h3>Where our soft ECE sits</h3>
+<p>Brier gave us the score. Murphy showed calibration is one part of it. Naeini made ECE the standard report. Guo showed that modern nets need it. Kumar and later work turned calibration into something you can put in a loss. Our <code>soft_ece</code> does that with Gaussian bin weights. Our version is a simple home-made form. I do not claim it matches any one paper exactly.</p>
+<div class="note warn">Not claimed here: any other named variant. I chose to leave them out rather than guess.</div>
+<div class="pager" data-nav></div>
+</section>
+
+<!-- 4 -->
+<section class="page" data-title="KL divergence" id="p4">
+<h2>4. KL divergence</h2>
+<h3>The intuition: extra surprise</h3>
+<p>Say you expect the world to follow distribution <b>q</b>, but it really follows <b>p</b>. You will be surprised more often than if you had expected <b>p</b>. KL divergence is the average amount of <i>extra</i> surprise.</p>
+<div class="formula">KL(p &#8214; q) = &Sigma;<sub>i</sub> p<sub>i</sub> &middot; log( p<sub>i</sub> / q<sub>i</sub> )</div>
+<ul>
+<li>It is zero when p = q. Otherwise it is positive.</li>
+<li>It is <b>not symmetric</b>. KL(p&#8214;q) is not KL(q&#8214;p).</li>
+<li>If q<sub>i</sub> is tiny where p<sub>i</sub> is not, the cost is huge. Expecting "never" and seeing it happen is very surprising.</li>
+<li>We use natural logs, so the unit is "nats".</li>
+</ul>
+<div class="card">
+  <h4>Drag the bars (tap, drag up or down). Keys: left/right pick a bar, up/down change it.</h4>
+  <div class="grid2">
+    <div><svg id="klP" class="chart" viewBox="0 0 360 200" tabindex="0" role="img" aria-label="Bars for distribution p"></svg></div>
+    <div><svg id="klQ" class="chart" viewBox="0 0 360 200" tabindex="0" role="img" aria-label="Bars for distribution q"></svg></div>
+  </div>
+  <div class="stats">
+    <div class="stat hl"><b id="klPQ">-</b><span>KL(p&#8214;q)</span></div>
+    <div class="stat hl"><b id="klQP">-</b><span>KL(q&#8214;p)</span></div>
+  </div>
+  <div class="tablewrap"><table id="klTab"></table></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+    <button type="button" id="klR1">Reset: p peaked, q flat</button>
+    <button type="button" id="klR2">Make q miss an option p likes</button>
+    <button type="button" id="klR3">Set q = p</button>
+  </div>
+</div>
+<p>Try the second button. Where q gives almost no chance to something p likes, KL(p&#8214;q) explodes. The reverse number is different. That is the asymmetry.</p>
+
+<h3>Why RL uses a KL penalty to a reference model</h3>
+<p>In RL fine-tuning we change a model to get more reward. We start from a model that already behaves well, for example after supervised fine-tuning (SFT). We freeze a copy of it. This copy is the <b>reference model</b>. We then add a penalty:</p>
+<div class="formula">loss = &minus;reward + &beta; &middot; KL( policy &#8214; reference )</div>
+<p>The penalty is small when the policy still answers like the reference, and grows as it drifts away. It does three jobs.</p>
+<ul>
+<li><b>It prevents drift and reward hacking.</b> A reward is only a proxy. A free-running optimiser finds odd outputs that score high but are bad. Staying near the reference limits this.</li>
+<li><b>It keeps what SFT learned.</b> Format, language and basic skill stay in place while the policy improves on the narrow thing the reward measures.</li>
+<li><b>It stops mode dropping.</b> Without it, the model may collapse onto one favourite answer and give other good options near-zero probability. Our <code>rlcd.py</code> header gives this as the reason for the KL hold.</li>
+</ul>
+<p>There is a neat fact behind the penalty. The best policy under "reward minus &beta;&middot;KL" has a closed form: reference probability times exp(reward / &beta;). So the reference is a prior, and the reward re-weights it.</p>
+
+<h3>History</h3>
+<ul class="timeline">
+<li><span class="yr">2015</span> <b>TRPO</b> (Schulman et al.). Improve the policy but stay inside a KL trust region, so each step is safe.</li>
+<li><span class="yr">2017</span> <b>PPO</b> (Schulman et al.). A cheaper way to stay close: clip the probability ratio. The paper also tried a KL penalty version.</li>
+<li><span class="yr">2019</span> <b>Ziegler et al.</b> "Fine-tuning language models from human preferences". KL penalty from the fine-tuned model to the pretrained model, inside RLHF.</li>
+<li><span class="yr">2020</span> <b>Stiennon et al.</b> "Learning to summarize from human feedback". Same recipe at larger scale, with a clear picture of reward over-optimisation.</li>
+<li><span class="yr">2022</span> <b>InstructGPT</b> (Ouyang et al.). RLHF with PPO and a per-token KL penalty to the SFT model.</li>
+<li><span class="yr">2022</span> <b>Gao et al.</b> "Scaling laws for reward model overoptimization". Measures how the true quality falls as the policy drifts too far from the start. <span class="unv">(year unverified)</span></li>
+<li><span class="yr">2023</span> <b>DPO</b> (Rafailov et al.). Uses the closed-form view above. The KL to the reference is built into the loss as an "implicit" reward, &beta; log(policy / reference). No RL loop is needed.</li>
+<li><span class="yr">2024</span> <b>GRPO</b> (DeepSeekMath, Shao et al.). No value network. Rewards are compared inside a group of samples. The KL to the reference is added to the loss and is estimated with the <b>k3</b> estimator (below).</li>
+</ul>
+
+<h3>Estimating KL from samples: k1, k2, k3</h3>
+<p>For a big language model, we cannot sum over all outputs. We sample an output x from the policy p and estimate KL from that one sample. Let r = p<sub>ref</sub>(x) / p(x). John Schulman's note "Approximating KL Divergence" <span class="unv">(2020, unverified)</span> compares three estimators:</p>
+<div class="formula">k1 = &minus;log r<br>k2 = (log r)&sup2; / 2<br>k3 = (r &minus; 1) &minus; log r</div>
+<ul>
+<li><b>k1</b> is unbiased but noisy. A single sample can be negative, even though KL is never negative.</li>
+<li><b>k2</b> is low in variance and always positive, but it is biased. It is a good approximation when p and the reference are close.</li>
+<li><b>k3</b> is unbiased and always positive (since r &minus; 1 &ge; log r). It adds a "control variate" (r &minus; 1, which has mean zero under p) to k1, which lowers the variance.</li>
+</ul>
+<p>Tiny example with two options. Move the sliders. Policy p over (A, B) and reference q over (A, B):</p>
+<div class="card">
+  <div class="ctrl"><label for="ep">p(A), policy</label><input id="ep" type="range" min="0.05" max="0.95" step="0.01" value="0.7"><output id="epO">0.70</output></div>
+  <div class="ctrl"><label for="eq">q(A), reference</label><input id="eq" type="range" min="0.05" max="0.95" step="0.01" value="0.5"><output id="eqO">0.50</output></div>
+  <div class="tablewrap"><table id="estTab"></table></div>
+  <div class="stats" id="estStats"></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button type="button" id="draw">Draw 20 samples from p</button>
+    <span class="push" id="drawMsg"></span>
+  </div>
+</div>
+<p>With the default numbers, exact KL is about 0.082. The mean of k1 and of k3 both match it. The mean of k2 is a little off (about 0.079). The "per-sample spread" column shows k3 varies less than k1.</p>
+
+<h3>What our code does</h3>
+<ul>
+<li><code>grpo_loss</code> in <code>train_prism.py</code> samples a few actions from the policy and uses k3 on each: with <code>lr</code> the reference log-prob and <code>logp</code> the policy log-prob, it computes <code>exp(lr - logp) - (lr - logp) - 1</code>. That is exactly r &minus; log r &minus; 1 with r = p<sub>ref</sub> / p. The estimate is averaged and scaled by <code>lam_kl = 0.02</code>.</li>
+<li><code>exact_pg_loss</code> does not sample. Each question has only a few options, so it sums over all of them: <code>(p * (logp - rl)).sum()</code>. That is the exact KL(policy&#8214;reference) with no sampling noise. It is also scaled by <code>lam_kl</code>.</li>
+</ul>
+<p>Both give KL in the same direction: policy first, reference second.</p>
+<div class="pager" data-nav></div>
+</section>
+
+<!-- 5 -->
+<section class="page" data-title="How they combine" id="p5">
+<h2>5. How they combine in our loss</h2>
+<div class="formula">loss = &minus;reward + 0.02 &middot; KL(policy &#8214; reference) + 0.5 &middot; softECE</div>
+<p>The weights are <code>lam_kl = 0.02</code> and <code>lam_cal = 0.5</code>. In code, <code>exact_pg_loss</code> returns <code>loss + args.lam_kl * kl + args.lam_cal * cal</code>, where <code>loss</code> is the mean of &minus;reward over questions.</p>
+<ul>
+<li><b>&minus;reward</b> pushes toward the right answer. With the Brier reward, reward = 1 &minus; &Sigma;(p &minus; y)&sup2;.</li>
+<li><b>KL</b> pulls the policy back toward the frozen reference.</li>
+<li><b>soft ECE</b> pushes confidence toward the observed accuracy. It looks at the whole batch. <code>calib_term</code> needs at least 2 questions.</li>
+</ul>
+
+<h3>Worked example: 3 options, a batch of 4 questions</h3>
+<p>Each question has 3 options. The table shows the policy's probabilities, the reference's, and which option is right. The slider sharpens or softens the policy (it divides the policy's log-probabilities by T). In real training the model changes by gradient steps, not a temperature. This is only a one-dimensional slice to show direction.</p>
+<div class="card">
+  <div class="ctrl"><label for="wT">Policy temperature</label><input id="wT" type="range" min="0.5" max="2" step="0.05" value="1"><output id="wTO">1.00</output></div>
+  <div class="tablewrap"><table id="wTab"></table></div>
+  <div class="bars3" id="wBarsBox"></div>
+  <div class="stats">
+    <div class="stat hl"><b id="wLoss">-</b><span>total loss</span></div>
+    <div class="stat"><b id="wR">-</b><span>mean reward</span></div>
+    <div class="stat"><b id="wK">-</b><span>mean KL</span></div>
+    <div class="stat"><b id="wS">-</b><span>soft ECE</span></div>
+  </div>
+  <p class="push" id="wPush"></p>
+</div>
+<p><b>Reading the push.</b> For each term the page checks if the term gets smaller when the policy gets sharper (T down) or softer (T up). "Wants sharper" means the gradient of that term pushes toward more confident outputs. The reward term and the calibration term can disagree. That is the point of having both.</p>
+
+<h3>Why Brier reward already helps, and why add soft ECE</h3>
+<p>The Brier score is a <b>proper</b> score. If the true chance of option A is 0.7, the best expected reward comes from saying exactly 0.7. So maximising Brier reward already pushes toward honest probabilities. That is why our reward has a calibration effect by itself.</p>
+<p>It still leaves two gaps. First, the push is per question and averaged. It never looks at the group ("of all answers I gave at 0.8, how many were right?"). Second, a model that has seen its training questions can become over-confident on them, and the per-question reward does not see the gap. Soft ECE reads the batch as a group and hits the confidence-accuracy gap directly. So it is an <b>extra push</b>, not a replacement. It is also noisy on small batches, which is why its weight is 0.5 and not larger.</p>
+<div class="pager" data-nav></div>
+</section>
+
+<!-- 6 -->
+<section class="page" data-title="Alternatives" id="p6">
+<h2>6. Alternatives</h2>
+<p>Nothing here is the one right answer. These are the options we know of. Claims I am not sure about are marked "(unverified)".</p>
+<h3>Making probabilities calibrated</h3>
+<table class="cmp">
+<thead><tr><th>Method</th><th>What it fixes</th><th>Pros</th><th>Cons</th><th>When to use</th></tr></thead>
+<tbody>
+<tr><td data-l="Method">Temperature scaling (after training)</td><td data-l="Fixes">Global over- or under-confidence.</td><td data-l="Pros">One number. Argmax does not change, so accuracy stays. Cheap.</td><td data-l="Cons">Needs held-out data. Fixes only the overall scale, not odd shapes. Can drift if the data shifts.</td><td data-l="When">First thing to try on a finished model.</td></tr>
+<tr><td data-l="Method">Platt scaling or isotonic regression</td><td data-l="Fixes">Platt: sigmoid-shaped miscalibration. Isotonic: any increasing shape.</td><td data-l="Pros">More flexible than one T. Isotonic needs no shape guess.</td><td data-l="Cons">Isotonic overfits with little data. Extra stage after training. Multi-class takes extra care.</td><td data-l="When">Binary scores with enough held-out data.</td></tr>
+<tr><td data-l="Method">Label smoothing</td><td data-l="Fixes">Over-confidence during training.</td><td data-l="Pros">Free. A one-line change to the target.</td><td data-l="Cons">Can swing to under-confidence. Can make later temperature scaling less effective <span class="unv">(unverified)</span>. Little control.</td><td data-l="When">You want a cheap regulariser and have no spare data.</td></tr>
+<tr><td data-l="Method">Focal loss</td><td data-l="Fixes">Over-confidence from easy examples (Mukhoti et al., 2020 <span class="unv">(unverified)</span>).</td><td data-l="Pros">Simple, one extra setting.</td><td data-l="Cons">The setting needs tuning. Not a direct calibration target.</td><td data-l="When">Classification where easy cases dominate.</td></tr>
+<tr><td data-l="Method">MMCE</td><td data-l="Fixes">Calibration gap, with a differentiable penalty and no bins.</td><td data-l="Pros">Smooth. No bin choice.</td><td data-l="Cons">Kernel choice. Cost grows with the square of the batch. Noisy on small batches.</td><td data-l="When">You want a trainable penalty without bins.</td></tr>
+<tr><td data-l="Method">Soft-binned ECE penalty (ours)</td><td data-l="Fixes">Confidence-accuracy gap, per batch.</td><td data-l="Pros">Easy to read. Same number we report. Smooth.</td><td data-l="Cons">Bin count and width matter. Noisy on small batches. Zero slope at exact 0 gap.</td><td data-l="When">You train and want a direct calibration signal.</td></tr>
+<tr><td data-l="Method">Brier or log-score training</td><td data-l="Fixes">Dishonest probabilities, in expectation.</td><td data-l="Pros">Proper scores: honest is optimal. No extra term.</td><td data-l="Cons">Over-fitting can still make a net over-confident. Blind to group gaps.</td><td data-l="When">Always a good base. Ours is Brier.</td></tr>
+<tr><td data-l="Method">Ensembles</td><td data-l="Fixes">Over-confidence and uncertainty, by averaging models.</td><td data-l="Pros">Strong results in practice (Lakshminarayanan et al., 2017).</td><td data-l="Cons">Costs M times the compute and memory. Hard for large models.</td><td data-l="When">Small models and high stakes.</td></tr>
+<tr><td data-l="Method">Conformal prediction</td><td data-l="Fixes">Gives a set of answers with a coverage guarantee, not a better probability.</td><td data-l="Pros">No distribution assumption beyond exchangeable data. Works with any model.</td><td data-l="Cons">Outputs sets, not one calibrated confidence. Needs a calibration set. The guarantee is on average, not for every input.</td><td data-l="When">You need a guarantee such as "right answer in the set 90% of the time".</td></tr>
+</tbody></table>
+
+<h3>Staying close to a reference</h3>
+<table class="cmp">
+<thead><tr><th>Method</th><th>What it fixes</th><th>Pros</th><th>Cons</th><th>When to use</th></tr></thead>
+<tbody>
+<tr><td data-l="Method">KL to the reference, KL(policy&#8214;ref) (ours)</td><td data-l="Fixes">Drift, hacking, mode dropping.</td><td data-l="Pros">Smooth. Clear theory. One knob (&beta;).</td><td data-l="Cons">Needs a frozen copy and its forward pass. &beta; needs tuning. Sample estimates are noisy.</td><td data-l="When">The default for RL fine-tuning.</td></tr>
+<tr><td data-l="Method">The other direction, KL(ref&#8214;policy)</td><td data-l="Fixes">Punishes the policy for dropping options the reference likes.</td><td data-l="Pros">Mass-covering. Fits the mode-dropping worry. Exact for our small option sets.</td><td data-l="Cons">Needs samples from the reference at scale. Names are confusing: "forward" and "reverse" depend on which model you call p.</td><td data-l="When">Worth a trial when options are few. We do not use it.</td></tr>
+<tr><td data-l="Method">Entropy bonus</td><td data-l="Fixes">Collapse onto one answer.</td><td data-l="Pros">Simple. No reference model.</td><td data-l="Cons">Pulls toward uniform, not toward what SFT learned. Can fight calibration.</td><td data-l="When">No reference exists, or exploration is the worry.</td></tr>
+<tr><td data-l="Method">PPO clipping only</td><td data-l="Fixes">Large single updates.</td><td data-l="Pros">No reference model. Cheap.</td><td data-l="Cons">Limits each step, not total drift over many steps. Clipping is not a strict trust region <span class="unv">(unverified)</span>.</td><td data-l="When">Short runs and mild reward hacking risk.</td></tr>
+<tr><td data-l="Method">L2 on weights, or LoRA alone</td><td data-l="Fixes">Large weight changes. LoRA limits the update to a low-rank piece.</td><td data-l="Pros">Cheap. LoRA also saves memory.</td><td data-l="Cons">Distance in weights is not distance in outputs. A small weight change can still change answers a lot.</td><td data-l="When">As a light extra, not the only guard.</td></tr>
+<tr><td data-l="Method">DPO-style implicit KL</td><td data-l="Fixes">Drift, with no RL loop.</td><td data-l="Pros">Stable. Simple. The KL is inside the loss.</td><td data-l="Cons">Needs preference pairs, not a score like Brier. Offline data.</td><td data-l="When">You have preference data, not a reward function.</td></tr>
+<tr><td data-l="Method">No KL at all</td><td data-l="Fixes">Frees the model to move. Saves the reference pass.</td><td data-l="Pros">Less memory and compute. Some recent reasoning-model work drops it (DAPO, Dr. GRPO <span class="unv">(unverified details)</span>).</td><td data-l="Cons">Nothing stops drift or hacking. For us, mode dropping is the exact risk the KL guards against.</td><td data-l="When">Verifiable rewards, long runs and close monitoring.</td></tr>
+</tbody></table>
+<div class="pager" data-nav></div>
+</section>
+
+<!-- 7 -->
+<section class="page" data-title="Glossary" id="p7">
+<h2>7. Glossary</h2>
+<dl class="gl">
+<dt>Calibration</dt><dd>When "x% sure" is right about x% of the time.</dd>
+<dt>Confidence</dt><dd>The probability the model gives to its top choice.</dd>
+<dt>Accuracy</dt><dd>The share of answers that are right.</dd>
+<dt>Over-confident / under-confident</dt><dd>Confidence is above / below accuracy.</dd>
+<dt>Reliability diagram</dt><dd>A plot of accuracy against confidence, per bin. A calibrated model lies on the diagonal.</dd>
+<dt>Bin</dt><dd>A slice of the confidence range, for example 0.8 to 0.9.</dd>
+<dt>ECE</dt><dd>Expected Calibration Error. The weighted average gap between confidence and accuracy over bins.</dd>
+<dt>Soft ECE</dt><dd>ECE where every answer joins every bin with a smooth Gaussian weight, so it has a gradient.</dd>
+<dt>Differentiable</dt><dd>Has a slope you can follow with gradient descent. A step function has none.</dd>
+<dt>Brier score</dt><dd>Average squared error of the probabilities. Lower is better.</dd>
+<dt>NLL</dt><dd>Negative log-likelihood. The average of &minus;log of the probability given to the right answer. Also called log loss.</dd>
+<dt>Proper scoring rule</dt><dd>A score that is best when the model reports its true beliefs. Brier and NLL are proper.</dd>
+<dt>Temperature</dt><dd>A number that divides the logits before softmax. Below 1 sharpens. Above 1 flattens.</dd>
+<dt>Logits</dt><dd>The raw scores before softmax turns them into probabilities.</dd>
+<dt>KL divergence</dt><dd>The average extra surprise when you expect q and the world is p. Not symmetric.</dd>
+<dt>Nat</dt><dd>The unit of information when you use natural logs.</dd>
+<dt>Reference model</dt><dd>A frozen copy of the model from before RL. The policy is kept near it.</dd>
+<dt>Policy</dt><dd>The model being trained. It maps a question to a distribution over answers.</dd>
+<dt>SFT</dt><dd>Supervised fine-tuning. Training on labelled examples before RL.</dd>
+<dt>Reward hacking</dt><dd>Getting a high reward in a way that does not match what we really want.</dd>
+<dt>Mode dropping</dt><dd>The model keeps one favourite answer and gives other good ones near-zero probability.</dd>
+<dt>Trust region</dt><dd>A limit on how far one update may move the policy. TRPO uses a KL limit.</dd>
+<dt>k1, k2, k3</dt><dd>Three ways to estimate KL from samples. Ours uses k3: r &minus; log r &minus; 1 with r = p_ref / p.</dd>
+<dt>lam_kl, lam_cal</dt><dd>The loss weights for the KL term (0.02) and the soft ECE term (0.5).</dd>
+<dt>GRPO</dt><dd>Group Relative Policy Optimisation. RL that compares rewards inside a group of samples, with no value network.</dd>
+</dl>
+<div class="pager" data-nav></div>
+</section>
+
+</main>
+</div>
+</div>
+
+<script>
+//CORE-START
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function gauss(r){let u=0;while(u===0)u=r();const v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+function makeData(n,seed){const r=mulberry32(seed);const out=[];for(let i=0;i<n;i++){const t=Math.floor(r()*3);const z=[0,1,2].map(k=>(k===t?1.69:0)+1.3*gauss(r));out.push({t:t,z:z});}return out;}
+function softmax(z,T){const m=Math.max.apply(null,z);const e=z.map(v=>Math.exp((v-m)/T));const s=e.reduce((a,b)=>a+b,0);return e.map(v=>v/s);}
+function evalSet(data,T){const conf=[],correct=[],probs=[];for(const d of data){const p=softmax(d.z,T);let bi=0;for(let k=1;k<p.length;k++)if(p[k]>p[bi])bi=k;conf.push(p[bi]);correct.push(bi===d.t?1:0);probs.push(p);}return{conf:conf,correct:correct,probs:probs};}
+function binStats(conf,correct,bins){const st=[];for(let b=0;b<bins;b++)st.push({lo:b/bins,hi:(b+1)/bins,n:0,sa:0,sc:0,acc:0,conf:0});for(let i=0;i<conf.length;i++){const b=Math.min(Math.floor(conf[i]*bins),bins-1);st[b].n++;st[b].sa+=correct[i];st[b].sc+=conf[i];}for(const s of st){if(s.n){s.acc=s.sa/s.n;s.conf=s.sc/s.n;}}return st;}
+function eceHard(conf,correct,bins){const st=binStats(conf,correct,bins);const N=conf.length;let o=0;for(const s of st)if(s.n)o+=(s.n/N)*Math.abs(s.acc-s.conf);return o;}
+function centres(bins){const c=[];for(let b=0;b<bins;b++)c.push((b+0.5)/bins);return c;}
+function softW(c,bins){const g=centres(bins).map(m=>Math.exp(-Math.pow((c-m)*bins,2)));const s=Math.max(g.reduce((a,b)=>a+b,0),1e-12);return g.map(v=>v/s);}
+function softEce(conf,correct,bins){const N=conf.length;const mass=new Array(bins).fill(0),sa=new Array(bins).fill(0),sc=new Array(bins).fill(0);for(let i=0;i<N;i++){const w=softW(conf[i],bins);for(let b=0;b<bins;b++){mass[b]+=w[b];sa[b]+=w[b]*correct[i];sc[b]+=w[b]*conf[i];}}const tot=mass.reduce((a,b)=>a+b,0);let o=0;for(let b=0;b<bins;b++){if(mass[b]>1e-6)o+=(mass[b]/tot)*Math.abs(sa[b]/mass[b]-sc[b]/mass[b]);}return o;}
+function brierOf(probs,data){let s=0;for(let i=0;i<data.length;i++){const p=probs[i];for(let k=0;k<p.length;k++){const y=k===data[i].t?1:0;s+=(p[k]-y)*(p[k]-y);}}return s/data.length;}
+function nllOf(probs,data){let s=0;for(let i=0;i<data.length;i++)s-=Math.log(probs[i][data[i].t]);return s/data.length;}
+function klDiv(p,q){let s=0;for(let i=0;i<p.length;i++){const a=Math.max(p[i],1e-6),b=Math.max(q[i],1e-6);s+=a*Math.log(a/b);}return s;}
+//CORE-END
+
+(function(){
+var $=function(s,r){return (r||document).querySelector(s);};
+var NS='http://www.w3.org/2000/svg';
+function S(tag,at,parent){var e=document.createElementNS(NS,tag);for(var k in at)e.setAttribute(k,at[k]);if(parent)parent.appendChild(e);return e;}
+function TX(txt,at,parent){var e=S('text',at,parent);e.textContent=txt;return e;}
+var f2=function(x){return x.toFixed(2);},f3=function(x){return x.toFixed(3);},f4=function(x){return x.toFixed(4);};
+
+/* theme */
+$('#themeBtn').addEventListener('click',function(){
+  var r=document.documentElement;
+  var dark=r.getAttribute('data-theme')?r.getAttribute('data-theme')==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;
+  r.setAttribute('data-theme',dark?'light':'dark');
+});
+
+/* stepper */
+var pages=Array.prototype.slice.call(document.querySelectorAll('section.page'));
+var list=$('#stepList');
+var cur=0;
+pages.forEach(function(p,i){
+  var li=document.createElement('li');var b=document.createElement('button');b.type='button';
+  b.innerHTML='<span class="n">'+(i+1)+'</span><span>'+p.getAttribute('data-title')+'</span>';
+  b.addEventListener('click',function(){show(i,true);});li.appendChild(b);list.appendChild(li);
+});
+pages.forEach(function(p,i){
+  var nav=p.querySelector('[data-nav]');if(!nav)return;
+  var a=document.createElement('button');a.type='button';a.textContent=i?'Back: '+pages[i-1].getAttribute('data-title'):'';
+  if(i)a.addEventListener('click',function(){show(i-1,true);});else a.style.visibility='hidden';
+  var n=document.createElement('button');n.type='button';n.textContent=i<pages.length-1?'Next: '+pages[i+1].getAttribute('data-title'):'';
+  if(i<pages.length-1)n.addEventListener('click',function(){show(i+1,true);});else n.style.visibility='hidden';
+  nav.appendChild(a);nav.appendChild(n);
+});
+function show(i,scroll){
+  cur=i;
+  pages.forEach(function(p,j){p.hidden=j!==i;});
+  Array.prototype.forEach.call(list.querySelectorAll('button'),function(b,j){if(j===i)b.setAttribute('aria-current','step');else b.removeAttribute('aria-current');});
+  try{history.replaceState(null,'','#s'+(i+1));}catch(e){}
+  if(scroll)window.scrollTo(0,0);
+}
+var h=(location.hash||'').match(/^#s(\d)$/);
+show(h&&+h[1]>=1&&+h[1]<=pages.length?+h[1]-1:0,false);
+
+/* 1: tally */
+(function(){
+  var sl=$('#tally');
+  function r(){
+    var k=+sl.value;$('#tallyO').textContent=k+'/10';
+    var d=$('#dots');d.innerHTML='';
+    for(var i=0;i<10;i++){var e=document.createElement('div');e.className='dot'+(i<k?'':' no');d.appendChild(e);}
+    var m=k===9?'About 9 of 10 were billing. The model said 90%. This is calibrated.':k<9?'Only '+k+' of 10 were billing, but the model said 90%. It is over-confident by '+(90-k*10)+' points.':'All 10 were billing. The model said 90%, so it was a little under-confident.';
+    $('#tallyMsg').textContent=m;
+  }
+  sl.addEventListener('input',r);r();
+})();
+
+/* 2: reliability */
+var DATA=makeData(150,7);
+function drawRel(svg,conf,correct,bins){
+  svg.innerHTML='';
+  var X=function(v){return 40+v*310;},Y=function(v){return 260-v*250;};
+  [0,0.25,0.5,0.75,1].forEach(function(v){
+    S('line',{x1:40,x2:350,y1:Y(v),y2:Y(v),'class':'grid'},svg);
+    TX(String(v),{x:34,y:Y(v)+3,'text-anchor':'end','class':'tx'},svg);
+    TX(String(v),{x:X(v),y:274,'text-anchor':'middle','class':'tx'},svg);
+  });
+  TX('confidence',{x:195,y:287,'text-anchor':'middle','class':'tx'},svg);
+  TX('accuracy',{x:8,y:135,transform:'rotate(-90 8 135)','text-anchor':'middle','class':'tx'},svg);
+  var st=binStats(conf,correct,bins);var mx=1;st.forEach(function(s){mx=Math.max(mx,s.n);});
+  st.forEach(function(b){
+    var x0=X(b.lo)+1,w=Math.max(1,X(b.hi)-X(b.lo)-2);
+    if(b.n){
+      S('rect',{x:x0,y:Y(b.acc),width:w,height:Math.max(0,Y(0)-Y(b.acc)),'class':'barAcc'},svg);
+      var y1=Y(Math.max(b.acc,b.conf)),y2=Y(Math.min(b.acc,b.conf));
+      S('rect',{x:x0,y:y1,width:w,height:Math.max(1,y2-y1),'class':'barGap'},svg);
+      S('line',{x1:x0,x2:x0+w,y1:Y(b.conf),y2:Y(b.conf),'class':'tick2'},svg);
+    }
+    S('rect',{x:x0,y:330-(b.n/mx)*38,width:w,height:(b.n/mx)*38,'class':'barCnt'},svg);
+  });
+  S('line',{x1:X(0),y1:Y(0),x2:X(1),y2:Y(1),'class':'diag'},svg);
+  S('line',{x1:40,x2:350,y1:260,y2:260,'class':'axis'},svg);
+  TX('count',{x:36,y:326,'text-anchor':'end','class':'tx'},svg);
+}
+var tS=$('#tmp'),nbS=$('#nb');
+function renderRel(){
+  var T=+tS.value,bins=+nbS.value;
+  $('#tmpO').textContent=f2(T);$('#nbO').textContent=bins;
+  var e=evalSet(DATA,T);
+  var ec=eceHard(e.conf,e.correct,bins),se=softEce(e.conf,e.correct,bins);
+  var acc=e.correct.reduce(function(a,b){return a+b;},0)/DATA.length,mc=e.conf.reduce(function(a,b){return a+b;},0)/DATA.length;
+  $('#sECE').textContent=f3(ec);$('#sSoft').textContent=f3(se);
+  $('#sBrier').textContent=f3(brierOf(e.probs,DATA));$('#sNLL').textContent=f3(nllOf(e.probs,DATA));
+  $('#sAcc').textContent=f3(acc);$('#sConf').textContent=f3(mc);
+  var d=mc-acc;
+  $('#relMsg').textContent=Math.abs(d)<0.03?'Mean confidence is close to accuracy. Calibrated.':d>0?'Mean confidence ('+f2(mc)+') is above accuracy ('+f2(acc)+'). Over-confident.':'Mean confidence ('+f2(mc)+') is below accuracy ('+f2(acc)+'). Under-confident.';
+  drawRel($('#rel'),e.conf,e.correct,bins);
+  renderEceT();
+}
+tS.addEventListener('input',renderRel);nbS.addEventListener('input',renderRel);
+Array.prototype.forEach.call(document.querySelectorAll('button[data-t]'),function(b){b.addEventListener('click',function(){tS.value=b.getAttribute('data-t');renderRel();});});
+
+/* 2b: soft weights */
+var wc=$('#wc'),wb=$('#wb');
+function renderW(){
+  var c=+wc.value,bins=+wb.value;
+  $('#wcO').textContent=f2(c);$('#wbO').textContent=bins;
+  var bi=Math.min(Math.floor(c*bins),bins-1);
+  $('#wSigma').textContent='Bin width '+f3(1/bins)+'. The Gaussian has spread (sigma) '+f3(1/(bins*Math.SQRT2))+', about 0.71 of a bin width. The bin that holds c is bin '+(bi+1)+' of '+bins+'.';
+  var sv=$('#wCurves');sv.innerHTML='';
+  var X=function(v){return 36+v*314;},Y=function(v){return 190-v*170;};
+  [0,0.5,1].forEach(function(v){S('line',{x1:36,x2:350,y1:Y(v),y2:Y(v),'class':'grid'},sv);TX(String(v),{x:30,y:Y(v)+3,'text-anchor':'end','class':'tx'},sv);});
+  [0,0.5,1].forEach(function(v){TX(String(v),{x:X(v),y:204,'text-anchor':'middle','class':'tx'},sv);});
+  TX('confidence c',{x:193,y:222,'text-anchor':'middle','class':'tx'},sv);
+  var M=240;
+  for(var b=0;b<bins;b++){
+    var pts=[];for(var i=0;i<=M;i++){var v=i/M;pts.push(X(v)+','+Y(softW(v,bins)[b]));}
+    S('polyline',{points:pts.join(' '),'class':b===bi?'lnA':'lnM'},sv);
+  }
+  var lo=bi/bins,hi=(bi+1)/bins;
+  S('polyline',{points:[X(0)+','+Y(0),X(lo)+','+Y(0),X(lo)+','+Y(1),X(hi)+','+Y(1),X(hi)+','+Y(0),X(1)+','+Y(0)].join(' '),'class':'lnB'},sv);
+  S('line',{x1:X(c),x2:X(c),y1:Y(1)-8,y2:Y(0),'class':'mk'},sv);
+  var sw=softW(c,bins);
+  var bs=$('#wBars');bs.innerHTML='';
+  var BX=function(b){return 36+b*(314/bins);},bw=314/bins;
+  [0,0.5,1].forEach(function(v){S('line',{x1:36,x2:350,y1:Y(v),y2:Y(v),'class':'grid'},bs);TX(String(v),{x:30,y:Y(v)+3,'text-anchor':'end','class':'tx'},bs);});
+  for(var b2=0;b2<bins;b2++){
+    var x0=BX(b2)+1,w=Math.max(1,bw-2);
+    S('rect',{x:x0,y:Y(sw[b2]),width:w,height:Y(0)-Y(sw[b2]),'class':'fillA',opacity:0.85},bs);
+    if(b2===bi)S('rect',{x:x0,y:Y(1),width:w,height:Y(0)-Y(1),fill:'none',stroke:'var(--accent2)','stroke-width':2},bs);
+    if(bins<=12)TX(String(b2+1),{x:x0+w/2,y:204,'text-anchor':'middle','class':'tx'},bs);
+  }
+  TX('bin number (soft weight filled, hard weight outlined)',{x:193,y:222,'text-anchor':'middle','class':'tx'},bs);
+}
+wc.addEventListener('input',renderW);wb.addEventListener('input',function(){renderW();renderEceT();});
+
+/* 2c: ECE vs T */
+function renderEceT(){
+  var bins=+wb.value;
+  var sv=$('#eceT');sv.innerHTML='';
+  var X=function(t){return 40+(t-0.3)/2.7*306;};
+  var pts=[],i;
+  for(i=0;i<=60;i++){var t=0.3+2.7*i/60;var e=evalSet(DATA,t);pts.push({t:t,h:eceHard(e.conf,e.correct,bins),s:softEce(e.conf,e.correct,bins)});}
+  var mx=0.05;pts.forEach(function(p){mx=Math.max(mx,p.h,p.s);});mx=Math.ceil(mx*20)/20;
+  var Y=function(v){return 190-(v/mx)*170;};
+  [0,0.5,1].forEach(function(f){var v=f*mx;S('line',{x1:40,x2:346,y1:Y(v),y2:Y(v),'class':'grid'},sv);TX(f3(v).replace(/0+$/,'').replace(/\.$/,''),{x:34,y:Y(v)+3,'text-anchor':'end','class':'tx'},sv);});
+  [0.5,1,1.5,2,2.5,3].forEach(function(t){TX(String(t),{x:X(t),y:204,'text-anchor':'middle','class':'tx'},sv);});
+  TX('temperature T',{x:193,y:222,'text-anchor':'middle','class':'tx'},sv);
+  S('polyline',{points:pts.map(function(p){return X(p.t)+','+Y(p.h);}).join(' '),'class':'lnB'},sv);
+  S('polyline',{points:pts.map(function(p){return X(p.t)+','+Y(p.s);}).join(' '),'class':'lnA'},sv);
+  S('line',{x1:X(+tS.value),x2:X(+tS.value),y1:12,y2:190,'class':'mk'},sv);
+}
+
+/* 4: KL bars */
+var KP=[0.55,0.25,0.15,0.05],KQ=[0.25,0.25,0.25,0.25];
+var KN=['billing','bugs','account','other'];
+function normSet(arr,i,v){
+  var n=arr.length,lo=0.01;v=Math.max(lo,Math.min(1-lo*(n-1),v));
+  var rest=0;for(var j=0;j<n;j++)if(j!==i)rest+=arr[j];
+  for(var k=0;k<n;k++){if(k===i)arr[k]=v;else arr[k]=rest>0?arr[k]*(1-v)/rest:(1-v)/(n-1);}
+}
+function makeBars(svgId,arr,cls,label){
+  var svg=$(svgId);var sel=0;
+  function draw(){
+    svg.innerHTML='';
+    var bw=70,Y=function(v){return 165-v*145;};
+    S('line',{x1:20,x2:350,y1:Y(0),y2:Y(0),'class':'axis'},svg);
+    S('line',{x1:20,x2:350,y1:Y(1),y2:Y(1),'class':'grid'},svg);
+    TX(label,{x:22,y:12,'class':'tx2'},svg);
+    arr.forEach(function(v,i){
+      var x=26+i*(bw+8);
+      S('rect',{x:x,y:Y(v),width:bw,height:Y(0)-Y(v),'class':cls,rx:3,opacity:i===sel?1:0.8},svg);
+      if(i===sel)S('rect',{x:x-2,y:Y(v)-2,width:bw+4,height:Y(0)-Y(v)+4,fill:'none',stroke:'var(--ink)','stroke-width':1,rx:4,'stroke-dasharray':'3 2'},svg);
+      TX(f2(v),{x:x+bw/2,y:Math.min(Y(v)-4,160),'text-anchor':'middle','class':'tx2'},svg);
+      TX(KN[i],{x:x+bw/2,y:182,'text-anchor':'middle','class':'tx'},svg);
+    });
+  }
+  function fromEvent(ev){
+    var r=svg.getBoundingClientRect();var sx=360/r.width;
+    var x=(ev.clientX-r.left)*sx,y=(ev.clientY-r.top)*sx;
+    var i=Math.floor((x-22)/78);i=Math.max(0,Math.min(arr.length-1,i));
+    return {i:i,v:(165-y)/145};
+  }
+  var drag=false;
+  svg.addEventListener('pointerdown',function(ev){drag=true;try{svg.setPointerCapture(ev.pointerId);}catch(e){}var o=fromEvent(ev);sel=o.i;normSet(arr,o.i,o.v);renderKL();});
+  svg.addEventListener('pointermove',function(ev){if(!drag)return;var o=fromEvent(ev);normSet(arr,sel,o.v);renderKL();});
+  svg.addEventListener('pointerup',function(){drag=false;});svg.addEventListener('pointercancel',function(){drag=false;});
+  svg.addEventListener('keydown',function(ev){
+    if(ev.key==='ArrowLeft'){sel=Math.max(0,sel-1);}
+    else if(ev.key==='ArrowRight'){sel=Math.min(arr.length-1,sel+1);}
+    else if(ev.key==='ArrowUp'){normSet(arr,sel,arr[sel]+0.02);}
+    else if(ev.key==='ArrowDown'){normSet(arr,sel,arr[sel]-0.02);}
+    else return;
+    ev.preventDefault();renderKL();
+  });
+  return draw;
+}
+var drawKP=makeBars('#klP',KP,'bar-p','p (truth, blue)'),drawKQ=makeBars('#klQ',KQ,'bar-q','q (expected, orange)');
+function renderKL(){
+  drawKP();drawKQ();
+  var a=klDiv(KP,KQ),b=klDiv(KQ,KP);
+  $('#klPQ').textContent=f3(a);$('#klQP').textContent=f3(b);
+  var h='<thead><tr><th>option</th><th class="num">p</th><th class="num">q</th><th class="num">p ln(p/q)</th><th class="num">q ln(q/p)</th></tr></thead><tbody>';
+  for(var i=0;i<KP.length;i++){h+='<tr><td>'+KN[i]+'</td><td class="num">'+f3(KP[i])+'</td><td class="num">'+f3(KQ[i])+'</td><td class="num">'+f3(KP[i]*Math.log(KP[i]/KQ[i]))+'</td><td class="num">'+f3(KQ[i]*Math.log(KQ[i]/KP[i]))+'</td></tr>';}
+  $('#klTab').innerHTML=h+'</tbody>';
+}
+function setK(p,q){for(var i=0;i<p.length;i++){KP[i]=p[i];KQ[i]=q[i];}renderKL();}
+$('#klR1').addEventListener('click',function(){setK([0.55,0.25,0.15,0.05],[0.25,0.25,0.25,0.25]);});
+$('#klR2').addEventListener('click',function(){setK([0.5,0.3,0.15,0.05],[0.02,0.4,0.3,0.28]);});
+$('#klR3').addEventListener('click',function(){setK(KP.slice(),KP.slice());});
+
+/* 4b: estimators */
+var ep=$('#ep'),eq=$('#eq'),rng=mulberry32(42);
+function estRows(){
+  var p0=+ep.value,q0=+eq.value;var p=[p0,1-p0],q=[q0,1-q0];
+  return p.map(function(pi,i){var r=q[i]/pi,l=Math.log(r);return{n:i?'B':'A',p:pi,q:q[i],r:r,k1:-l,k2:l*l/2,k3:r-1-l};});
+}
+function renderEst(){
+  $('#epO').textContent=f2(+ep.value);$('#eqO').textContent=f2(+eq.value);
+  var rows=estRows();
+  var h='<thead><tr><th>sample x</th><th class="num">p(x)</th><th class="num">q(x)</th><th class="num">r=q/p</th><th class="num">k1</th><th class="num">k2</th><th class="num">k3</th></tr></thead><tbody>';
+  rows.forEach(function(o){h+='<tr><td>'+o.n+'</td><td class="num">'+f3(o.p)+'</td><td class="num">'+f3(o.q)+'</td><td class="num">'+f3(o.r)+'</td><td class="num">'+f3(o.k1)+'</td><td class="num">'+f3(o.k2)+'</td><td class="num">'+f3(o.k3)+'</td></tr>';});
+  $('#estTab').innerHTML=h+'</tbody>';
+  var exact=klDiv(rows.map(function(o){return o.p;}),rows.map(function(o){return o.q;}));
+  function mean(k){return rows.reduce(function(a,o){return a+o.p*o[k];},0);}
+  function sd(k){var m=mean(k);return Math.sqrt(rows.reduce(function(a,o){return a+o.p*Math.pow(o[k]-m,2);},0));}
+  var st='<div class="stat hl"><b>'+f4(exact)+'</b><span>exact KL(p&#8214;q)</span></div>';
+  ['k1','k2','k3'].forEach(function(k){st+='<div class="stat"><b>'+f4(mean(k))+'</b><span>mean of '+k+' (spread '+f3(sd(k))+')</span></div>';});
+  $('#estStats').innerHTML=st;
+  $('#drawMsg').textContent='';
+}
+ep.addEventListener('input',renderEst);eq.addEventListener('input',renderEst);
+$('#draw').addEventListener('click',function(){
+  var rows=estRows(),n=20,s={k1:0,k2:0,k3:0};
+  for(var i=0;i<n;i++){var o=rng()<rows[0].p?rows[0]:rows[1];s.k1+=o.k1;s.k2+=o.k2;s.k3+=o.k3;}
+  $('#drawMsg').textContent='20 samples. Means: k1 '+f4(s.k1/n)+', k2 '+f4(s.k2/n)+', k3 '+f4(s.k3/n)+'. Press again for a new draw.';
+});
+
+/* 5: worked example */
+var WQ=[{ref:[0.5,0.3,0.2],pol:[0.7,0.2,0.1],t:0},{ref:[0.4,0.4,0.2],pol:[0.6,0.3,0.1],t:1},{ref:[0.6,0.2,0.2],pol:[0.8,0.1,0.1],t:0},{ref:[0.3,0.5,0.2],pol:[0.2,0.7,0.1],t:2}];
+var LAM_KL=0.02,LAM_CAL=0.5;
+function wEval(Tm){
+  var rows=WQ.map(function(q){
+    var p=softmax(q.pol.map(Math.log),Tm);var bi=0;for(var k=1;k<3;k++)if(p[k]>p[bi])bi=k;
+    var rew=1;for(var j=0;j<3;j++){var y=j===q.t?1:0;rew-=(p[j]-y)*(p[j]-y);}
+    return{p:p,ref:q.ref,conf:p[bi],ok:bi===q.t?1:0,rew:rew,kl:klDiv(p,q.ref)};
+  });
+  var R=rows.reduce(function(a,r){return a+r.rew;},0)/rows.length,K=rows.reduce(function(a,r){return a+r.kl;},0)/rows.length;
+  var SE=softEce(rows.map(function(r){return r.conf;}),rows.map(function(r){return r.ok;}),10);
+  var tr=-R,tk=LAM_KL*K,tc=LAM_CAL*SE;
+  return{rows:rows,R:R,K:K,SE:SE,tr:tr,tk:tk,tc:tc,loss:tr+tk+tc};
+}
+function fmtv(a){return '('+a.map(f2).join(', ')+')';}
+function renderWork(){
+  var Tm=+$('#wT').value;$('#wTO').textContent=f2(Tm);
+  var w=wEval(Tm);
+  var h='<thead><tr><th>Q</th><th>policy p</th><th>reference</th><th class="num">right</th><th class="num">conf</th><th class="num">hit</th><th class="num">reward</th><th class="num">KL</th></tr></thead><tbody>';
+  w.rows.forEach(function(r,i){h+='<tr><td>'+(i+1)+'</td><td class="mono">'+fmtv(r.p)+'</td><td class="mono">'+fmtv(r.ref)+'</td><td class="num">'+['A','B','C'][WQ[i].t]+'</td><td class="num">'+f3(r.conf)+'</td><td class="num">'+r.ok+'</td><td class="num">'+f3(r.rew)+'</td><td class="num">'+f4(r.kl)+'</td></tr>';});
+  $('#wTab').innerHTML=h+'</tbody>';
+  $('#wLoss').textContent=f4(w.loss);$('#wR').textContent=f4(w.R);$('#wK').textContent=f4(w.K);$('#wS').textContent=f4(w.SE);
+  var mx=Math.max(Math.abs(w.tr),w.tk,w.tc,1e-9);
+  var parts=[['-reward',w.tr],['0.02 x KL',w.tk],['0.5 x softECE',w.tc]];
+  var bx='';parts.forEach(function(p){bx+='<div class="row"><span>'+p[0]+'</span><div class="bar"><i style="width:'+(Math.abs(p[1])/mx*100)+'%"></i></div><span class="v">'+f4(p[1])+'</span></div>';});
+  $('#wBarsBox').innerHTML=bx;
+  var d=0.02,a=wEval(Math.max(0.2,Tm-d)),b=wEval(Tm+d);
+  function dir(x,y){var s=(y-x);if(Math.abs(s)<1e-7)return 'is flat';return s>0?'wants sharper (lower T)':'wants softer (higher T)';}
+  $('#wPush').textContent='Right now: the reward term '+dir(a.tr,b.tr)+'. The KL term '+dir(a.tk,b.tk)+'. The soft ECE term '+dir(a.tc,b.tc)+'.';
+}
+$('#wT').addEventListener('input',renderWork);
+
+renderRel();renderW();renderKL();renderEst();renderWork();
+})();
+</script>
