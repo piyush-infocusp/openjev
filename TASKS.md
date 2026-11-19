@@ -54,6 +54,14 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
 - [ ] OJ-070 [P4] E4B run (bs 2 x accum 16, 1024 tokens) after E2B is clean.
 - [ ] OJ-071 [P4] Optional live metrics via W&B **(user: add WANDB_API_KEY secret first)**.
 
+- [ ] OJ-072 [P1] Speed: option sub-sampling in training only (keep the gold option + up to 24 random negatives per
+  choice question; full option set at eval). clinc150 (150 options) and banking77 (77) templates shrink from
+  ~1000 to ~200 tokens. Exact for isolated flags; check accuracy impact with the siblings mask.
+- [ ] OJ-073 [P2] Speed: turn off gradient checkpointing when the measured peak memory allows (E2B uses ~7 of 15 GB);
+  add `--grad-ckpt auto` that measures the first step and decides.
+- [ ] OJ-074 [P3] Speed: log which SDPA kernel runs with the custom float mask on T4 (mem-efficient vs math);
+  if math, test FlexAttention or a boolean mask.
+
 ## Done
 
 - [x] OJ-013 [P1] Full conversion run on this machine: no limit for banking77, clinc150, support_tickets and helpsteer3;
@@ -170,3 +178,4 @@ Phases: P0 foundation · P1 dataset · P2 GPU · P3 SFT · P4 RLCD · P5 serve.
 - 2026-11-19 — Memory/stability fix: embedding matrix no longer trained (fp32 template_delta for the 7 template tokens), all trainable params fp32 (fp16 AdamW eps underflow), PLE table kept on CPU (--ple-cpu, saves 4.7 GB on E2B). Measured on meta: E2B 4.63B text (PLE 2.35B) -> 4.6 GB GPU fp16; E4B 7.46B (PLE 2.82B) -> 9.3 GB; LoRA r16 24M/35M. bs 4 x accum 8. Pushed v6 (v5 still running old code).
 - 2026-11-19 — prism-train v6 ERROR in SFT preflight: PLE weight on CPU but its embed_scale buffer on cuda. place() now detaches the whole PLE module during model.to; regression test tests/test_prism_place.py (meta device); 151 tests pass; pushed v7.
 - 2026-11-19 — prism-train v7: PREFLIGHT OK on real Gemma 4 E2B (first error-free run), but ~140 s/step (4.4 s/sample, bs4x8) -> 2000 steps would need ~78 h. Stopped by user at step ~70 (ce 2.7->~2.0-2.4). Log in runs/prism-20261119-1657-v7. Next: packed length-bucketed batching, DDP, time budget.
+- 2026-11-19 — v8 short run: SFT 60 steps done, ~35 s/step (8 samples). val@30 acc .303 nll 2.162 ece .072; val@60 acc .296 nll 2.126 ece .058. banking77 0.00, prm800k 0.04 (below majority). RL started (reward .25, kl .018). Added speed todos OJ-072..074.
