@@ -166,6 +166,11 @@ def trial_round(t) -> int:
     return int(t.user_attrs.get("round", 1))
 
 
+def is_comparable(t) -> bool:
+    """False for display-only copies (tools/import_legacy.py: rounds 1-2, old mask)."""
+    return t.user_attrs.get("comparable") is not False
+
+
 def distribution(d: dict):
     if d["type"] == "categorical":
         return CategoricalDistribution(d["choices"])
@@ -576,6 +581,10 @@ def cmd_propose(a):
     set_study_meta(study, impl, rnd, st, conditions)
     need_base = not any(t.user_attrs.get("is_baseline") and t.state in alive
                         and trial_round(t) == rnd for t in study.trials)
+    if max(a.n, int(need_base)) > int(need_base) and any(not is_comparable(t) for t in study.trials):
+        # TPESampler reads every trial of the study, so legacy copies would steer it.
+        raise SystemExit("the study holds legacy trials (comparable=False): TPE would learn from "
+                         "them. Propose with --n 0 and --enqueue-json only.")
     if a.baseline_profile and not need_base:
         raise SystemExit(f"--baseline-profile: round {rnd} already has a baseline")
     if need_base:
@@ -850,7 +859,7 @@ def cmd_validate_plan(a):
         raise SystemExit("validate-plan needs global_batch / micro_batch in the yaml")
     study = open_study(a.db, a.seed, a.study)
     trials = study.get_trials(deepcopy=False)
-    n_complete = sum(t.state == TrialState.COMPLETE for t in trials)
+    n_complete = sum(t.state == TrialState.COMPLETE and is_comparable(t) for t in trials)
     last = (study.user_attrs.get("last_validation") or {}).get("n_complete", 0)
     every = int(st.get("validate_every", 30))
     if not a.end_of_round and n_complete - last < every:
@@ -1023,6 +1032,10 @@ def fmt(x, nd=3):
 
 
 def importances(study) -> tuple[dict, str]:
+    if any(not is_comparable(t) for t in study.trials):   # legacy copies stay out
+        tmp = optuna.create_study(direction="maximize")
+        tmp.add_trials([t for t in study.trials if is_comparable(t)])
+        study = tmp
     try:
         return optuna.importance.get_param_importances(study), "fANOVA"
     except Exception:

@@ -670,3 +670,27 @@ def test_baseline_profile_small_round(tmp_path):
     first = load(db).trials[ts[0]["trial_number"]]
     assert first.user_attrs["is_baseline"] and first.params["profile"] == 1
     assert {t.user_attrs["source"] for t in load(db).trials} == {"baseline", "enqueued"}
+
+
+def test_import_legacy_is_display_only(tmp_path):
+    """tools/import_legacy.py copies COMPLETE/PRUNED legacy trials (comparable=False, once);
+    propose then refuses TPE trials and the importances skip the copies."""
+    import import_legacy as il
+    db = tmp_path / "s.db"
+    g = ["--db", str(db)] + space(tmp_path)
+    ol.main(g + ["propose", "--n", "1", "--out", str(tmp_path / "t.json")])
+    old = optuna.create_study(study_name="old", storage=f"sqlite:///{db}", direction="maximize")
+    d = {"bs": optuna.distributions.CategoricalDistribution([1, 2, 4, 8])}
+    old.add_trial(optuna.trial.create_trial(params={"bs": 4}, distributions=d, value=0.2,
+                                            user_attrs={"is_baseline": True, "round": 1}))
+    old.add_trial(optuna.trial.create_trial(params={"bs": 8}, distributions=d,
+                                            state=optuna.trial.TrialState.PRUNED))
+    old.add_trial(optuna.trial.create_trial(params={"bs": 2}, distributions=d,
+                                            state=optuna.trial.TrialState.FAIL))
+    for _ in range(2):   # idempotent
+        il.main(["--db", str(db), "--legacy", "old", "--target", ol.STUDY_NAME])
+    leg = [t for t in load(db).trials if t.user_attrs.get("source") == "legacy_r1_r2"]
+    assert len(leg) == 2 and all(t.user_attrs["comparable"] is False for t in leg)
+    assert not leg[0].user_attrs.get("is_baseline") and leg[0].user_attrs["legacy_is_baseline"]
+    with pytest.raises(SystemExit, match="legacy trials"):
+        ol.main(g + ["propose", "--n", "3", "--out", str(tmp_path / "t.json"), "--abandon-running"])
