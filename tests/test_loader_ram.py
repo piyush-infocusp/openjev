@@ -138,10 +138,11 @@ def test_template_resize_skips_hf_mean_resizing(tok, monkeypatch):
     mean_resizing builds fp32 copies + a covariance of it on the host. The resize must pass
     mean_resizing=False, and add_special_tokens sets the template rows of BOTH tables
     from chunked row stats (finite, near the old mean)."""
-    import copy
-    from transformers import Gemma4TextConfig, Gemma4TextModel
+    from transformers import AutoTokenizer, Gemma4TextConfig, Gemma4TextModel
     from openjev.schema import SPECIAL_TOKENS, add_special_tokens
-    tk = copy.deepcopy(tok)
+    # Fresh tokenizer: the session `tok` may already carry the special tokens (other tests
+    # call add_special_tokens on it), which would make add_special_tokens a no-op here.
+    tk = AutoTokenizer.from_pretrained(tok.name_or_path)
     cfg = Gemma4TextConfig(vocab_size=len(tk), hidden_size=32, intermediate_size=64, num_hidden_layers=2,
                            num_attention_heads=2, num_key_value_heads=1, head_dim=16,
                            vocab_size_per_layer_input=len(tk), hidden_size_per_layer_input=4,
