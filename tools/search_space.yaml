@@ -175,6 +175,7 @@ dimensions:
     default: 0
     requires_reload: false
     implemented: true
+    sample: false
     idea: >-
       OJ-072. Train on the gold option + k random negatives per choice question (0 = all
       options); eval and the probe always use all options. clinc150 and banking77 templates
