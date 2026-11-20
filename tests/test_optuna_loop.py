@@ -351,8 +351,8 @@ def test_report_importances_and_guard(tmp_path):
     assert {d["name"] for d in impl} == {"bs", "grad_ckpt", "max_state_tokens", "torch_threads",
                                          "sdpa_backend", "ple_cpu", "attn_backend", "profile",
                                          "dtype", "option_subsample_k", "packing", "pack_len"}
-    assert [d["name"] for d in impl if not d["sample"]] == ["bs", "max_state_tokens", "ple_cpu",
-                                                            "dtype", "profile"]
+    assert [d["name"] for d in impl if not d["sample"]] == ["bs", "max_state_tokens", "ple_cpu", "dtype", "profile",
+                                                            "option_subsample_k"]
     assert all(not d["implemented"] for d in space_ if d["name"] in ("quant", "ddp", "torch_compile"))
     import bench_trials as bt
     assert {d["name"] for d in impl} <= bt.TRIAL_PARAMS | bt.RELOAD_PARAMS   # every dim has a handler
@@ -574,6 +574,7 @@ def test_validate_mode(tmp_path, tok):
     assert plan["settings"]["steps"] == 2 and plan["settings"]["micro_batch"] == 2
     for c in plan["configs"]:
         c["params"]["dtype"] = "fp32"
+        c["params"]["attn_backend"] = "sdpa_default"   # flex is unsupported on CPU; sampling is seed-dependent
     vj.write_text(json.dumps(plan))
     vset = g[g.index("--val-set") + 1]
     run(BENCH + ["--validate", str(vj), "--val-set", vset, "--out", str(rj), "--model", str(base), "--cpu",
