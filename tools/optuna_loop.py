@@ -576,8 +576,12 @@ def cmd_propose(a):
     set_study_meta(study, impl, rnd, st, conditions)
     need_base = not any(t.user_attrs.get("is_baseline") and t.state in alive
                         and trial_round(t) == rnd for t in study.trials)
+    if a.baseline_profile and not need_base:
+        raise SystemExit(f"--baseline-profile: round {rnd} already has a baseline")
     if need_base:
-        study.enqueue_trial({n: v for n, v in defaults.items() if n in sampled},
+        # profile=1 runs after timing (bench_trials step 7), so the baseline's samples/s stays fair.
+        base = dict(defaults, profile=1) if a.baseline_profile else defaults
+        study.enqueue_trial({n: v for n, v in base.items() if n in sampled or v != defaults[n]},
                             user_attrs={"is_baseline": True, "round": rnd, "source": "baseline",
                                         "idea": BASELINE_IDEA, "hypothesis": BASELINE_HYP,
                                         "reference": ""})
@@ -1226,6 +1230,8 @@ def main(argv=None):
     p.add_argument("--enqueue-json", action="append", default=[], metavar="JSON",
                    help="enqueue an exact config (JSON object or list; missing keys = yaml "
                         "defaults), asked before the --n TPE trials; repeatable")
+    p.add_argument("--baseline-profile", action="store_true",
+                   help="the round baseline also runs the profiler (after timing; no extra trial)")
     p.set_defaults(fn=cmd_propose)
     p = sub.add_parser("ingest", help="study.tell() the results of bench_trials.py")
     p.add_argument("results")

@@ -319,7 +319,7 @@ def test_report_importances_and_guard(tmp_path):
     assert {d["name"] for d in impl} == {"bs", "grad_ckpt", "max_state_tokens", "torch_threads",
                                          "sdpa_backend", "ple_cpu", "attn_backend", "profile",
                                          "dtype"}
-    assert [d["name"] for d in impl if not d["sample"]] == ["bs", "ple_cpu", "dtype", "profile"]
+    assert [d["name"] for d in impl if not d["sample"]] == ["bs", "max_state_tokens", "ple_cpu", "dtype", "profile"]
     assert all(not d["implemented"] for d in space_ if d["name"] in ("quant", "ddp", "packing"))
     trials = tmp_path / "t.json"
     g = ["--db", str(db)] + space(tmp_path, small=False)
@@ -328,7 +328,7 @@ def test_report_importances_and_guard(tmp_path):
     for t in json.loads(trials.read_text()):
         p = t["params"]
         res.append({"trial_number": t["trial_number"], "params": p, "status": "ok",
-                    "samples_per_sec": 0.001 * p["max_state_tokens"] + (0.05 if p["grad_ckpt"] == "off" else 0),
+                    "samples_per_sec": 0.01 * p["torch_threads"] + (0.05 if p["grad_ckpt"] == "off" else 0),
                     "loss_start": 2.0, "loss_end": 1.5, "tokens_per_sec": 100.0})
     res[1].update(loss_guard=2.4)                  # loss went up after the guard steps: pruned
     res[3].update(loss_guard=1.5, loss_end=1.95)   # slow config, fewer timed steps: still kept
@@ -342,7 +342,7 @@ def test_report_importances_and_guard(tmp_path):
     out = tmp_path / "E.md"
     ol.main(g + ["report", "--out", str(out)])
     text = out.read_text()
-    assert "## Parameter importances" in text and "| max_state_tokens |" in text
+    assert "## Parameter importances" in text and "| torch_threads |" in text
     assert "Ideas not implemented yet" in text and "`quant`" in text
 
 
@@ -493,7 +493,7 @@ def test_fixed_conditions(tmp_path, tok):
     assert c["trial_stream_sha"] == stream["sha"] == study.user_attrs["trial_stream_sha"]
     assert c["val_set_sha"] == study.user_attrs["val_set_sha"]
     assert c["ple"].startswith("PENDING") and "micro-batch 8, global batch 32, grad_accum 4" in c["batch"]
-    assert c["max_state_tokens"].startswith("SAMPLED") and "6df0efe" in c["prism_mask"]
+    assert c["max_state_tokens"] == "fixed 1024" and "6df0efe" in c["prism_mask"]   # r4 prep (9d4f1b8)
     assert "2cf488f" in c["loader"] and "fp16" in c["dtype"]
     ver = ol.short_sha(c)
     assert all(t.user_attrs["fixed_conditions_version"] == ver for t in study.trials)
@@ -652,3 +652,21 @@ def test_propose_refuses_changed_stream(tmp_path):
         ol.main(g + ["propose", "--n", "1", "--out", str(tmp_path / "t.json"), "--abandon-running"])
     with pytest.raises(SystemExit, match="exists"):
         ol.main(g + ["freeze", "--train", FIX, "--val", FIX])
+
+
+def test_baseline_profile_small_round(tmp_path):
+    """Small rounds (user, r3): baseline with profile=1 (profiled after timing, no extra
+    trial) + 3 enqueued configs + --n 0 = exactly 4 trials, no TPE."""
+    db, out = tmp_path / "s.db", tmp_path / "t.json"
+    g = ["--db", str(db)] + space(tmp_path)
+    ol.main(g + ["propose", "--n", "0", "--out", str(out), "--baseline-profile",
+                 "--enqueue-json", '[{"ple_cpu": 1}, {"attn_backend": "chunked_math", "grad_ckpt": "off"},'
+                                   ' {"attn_backend": "flex"}]'])
+    ts = json.loads(out.read_text())
+    assert len(ts) == 4
+    assert ts[0]["params"]["profile"] == 1 and ts[0]["params"]["ple_cpu"] == 0
+    assert all(t["params"]["profile"] == 0 for t in ts[1:])
+    assert ts[1]["params"]["ple_cpu"] == 1 and ts[3]["params"]["attn_backend"] == "flex"
+    first = load(db).trials[ts[0]["trial_number"]]
+    assert first.user_attrs["is_baseline"] and first.params["profile"] == 1
+    assert {t.user_attrs["source"] for t in load(db).trials} == {"baseline", "enqueued"}

@@ -45,7 +45,7 @@ study_name: openjev-speed-v2
 global_batch: 32
 micro_batch: 8
 warmup_steps: 1        # optimizer steps before the quality guard (same for every trial)
-timed_steps: 4         # optimizer steps in the timed loop: every trial times the same records
+timed_steps: 2         # optimizer steps in the timed loop: every trial times the same records (r3: 4 -> 2, small rounds)
 diag_mb: 16            # round baseline only: one fwd+bwd at this micro-batch, recorded, never used
 # Frozen data (tools/optuna_loop.py freeze): the same record ids for every trial.
 trial_stream_len: 640  # >= (warmup_steps + timed_steps) * global_batch, with margin
