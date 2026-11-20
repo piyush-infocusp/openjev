@@ -214,16 +214,17 @@ infeasible at mb 8 (OOM at 13.9 GB). **pad_frac 0.52**: half of the tokens in ev
 (2 steps, CUDA time): mm 28%, mul 15%, efficient-attention bwd 13% + fwd 7%, copy_ 12.5%, "Command Buffer Full" 10.6%,
 PLE CPU lookup ~1% of CPU. The micro-batch-16 probe fits (13.1 GB of 14.56).
 
-6. **Length-grouped micro-batches, then packing (OJ-060).** Hypothesis: with pad_frac 0.52 about half of all matmul and
-   attention work is on padding. Sorting each global batch of 32 by length into its 4 micro-batches keeps the optimizer
-   step identical (same 32 samples, same sum of gradients) and only changes padding. Expected: up to ~1.5–1.9× samples/s
-   at equal quality. Packing (a block-diagonal Prism mask, positions restarting per request) goes further.
-   References: Krell et al. 2021, *Efficient Sequence Packing without Cross-contamination*, arXiv:2107.02027;
-   HF Trainer `group_by_length` (LengthGroupedSampler).
+6. **Packing on vs off, then length-grouped micro-batches (OJ-060).** Hypothesis: with pad_frac 0.52 about half of all
+   matmul and attention work is on padding. `packing` / `pack_len` / `option_subsample_k` are implemented since 2b642a0,
+   so round 5 can enqueue `packing=on` against the baseline directly. A cheaper variant: sort each global batch of 32 by
+   length into its 4 micro-batches; the optimizer step stays identical (same 32 samples), only padding changes.
+   Expected: up to ~1.5–1.9× samples/s at equal quality. References: Krell et al. 2021, *Efficient Sequence Packing
+   without Cross-contamination*, arXiv:2107.02027; HF Trainer `group_by_length` (LengthGroupedSampler).
 7. **micro_batch 16, grad_accum 2 (same global batch 32).** Hypothesis: the round-4 diag shows mb 16 fits (13.1 GB) with
-   ple_cpu=1 + grad-ckpt; the optimizer step is unchanged, while each kernel gets twice the rows, so the launch-bound
-   part ("Command Buffer Full", the many small mul/add/copy_ kernels) is amortized. Needs a new round (micro_batch is a
-   round constant). Reference: NVIDIA, *Deep Learning Performance Guide: matrix multiplication background* (larger GEMM
+   ple_cpu=1 + grad-ckpt; the optimizer step is unchanged, while each GEMM gets twice the rows (larger M), which raises
+   arithmetic intensity on the T4 tensor cores. ("Command Buffer Full" in the profile means the CPU waits on a full
+   launch queue, i.e. the GPU is the bottleneck, not launch overhead.) Needs a new round (micro_batch is a round
+   constant). Reference: NVIDIA, *Deep Learning Performance Guide: matrix multiplication background* (larger GEMM
    M dimension raises arithmetic intensity), https://docs.nvidia.com/deeplearning/performance/dl-performance-matrix-multiplication/
 8. **Fuse the elementwise ops (mul 15% + copy_ 12.5% + add ~7%).** Hypothesis: RMSNorm, GeGLU, the LoRA scaling and the
    fp16/fp32 casts are memory-bound elementwise kernels; fused Triton kernels (Liger) or `torch.compile` of the decoder
