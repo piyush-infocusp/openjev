@@ -226,8 +226,14 @@ def build(args, device, base: str | None = None):
     if args.init and (Path(args.init) / "prism_config.json").exists():
         base_name = json.loads((Path(args.init) / "prism_config.json").read_text())["base"]
     base_name = base or base_name
-    model = PrismOpenJev(gemma_text_backbone(base_name, dtype=dtype), causal=args.causal)
+    # On CUDA, load bf16 and convert AFTER moving to the GPU: converting on the host
+    # turned the mmap-backed weights into ~10 GB of anonymous RAM and Kaggle
+    # SIGKILLed the r3 bench right after "after_convert" (host RSS 10.24 GB).
+    host_convert = device == "cpu"
+    model = PrismOpenJev(gemma_text_backbone(base_name, dtype=dtype, convert=host_convert),
+                         causal=args.causal)
     add_special_tokens(tok, model)
+    log_rss("after_resize")          # mean_resizing holds two fp32 copies of the embedding
     # A tokenizer saved by a checkpoint already holds the template tokens, so
     # add_special_tokens adds nothing and does not resize. Gemma has no spare
     # rows, so make sure every token id has an embedding row.
@@ -265,6 +271,10 @@ def build(args, device, base: str | None = None):
             p.data = p.data.float()
     model = place(model, device, args.ple_cpu)
     log_rss("after_place")
+    if not host_convert:
+        from openjev.prism import convert_inplace
+        convert_inplace(model.backbone, dtype)   # frozen weights only; in place, per tensor
+        log_rss("after_device_convert")
     return model, tok, dtype
 
 

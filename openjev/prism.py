@@ -201,7 +201,7 @@ def log_rss(stage: str) -> dict:
     return out
 
 
-def gemma_text_backbone(name: str, dtype=torch.float32):
+def gemma_text_backbone(name: str, dtype=torch.float32, convert: bool = True):
     """Load only the text decoder of a Gemma 4 checkpoint (drops vision and audio)."""
     from transformers import AutoModel
 
@@ -225,8 +225,8 @@ def gemma_text_backbone(name: str, dtype=torch.float32):
     import gc
     gc.collect()
     log_rss("after_drop_towers")
-    if dtype != load_dtype:
-        convert_inplace(text, dtype)
+    if convert and dtype != load_dtype:
+        convert_inplace(text, dtype, skip_trainable=False)   # nothing is frozen yet
         log_rss("after_convert")
     text.config._attn_implementation = "sdpa"
     return text
@@ -247,13 +247,21 @@ def _cast(t: torch.Tensor, dtype, chunk: int = 1 << 24) -> torch.Tensor:
     return out.view(t.shape)
 
 
-def convert_inplace(module: nn.Module, dtype) -> nn.Module:
-    """Cast floating parameters and buffers one tensor at a time (in place when possible)."""
+def convert_inplace(module: nn.Module, dtype, skip_trainable: bool = True) -> nn.Module:
+    """Cast floating parameters and buffers one tensor at a time (in place when possible).
+    skip_trainable: parameters with requires_grad (LoRA, flag head, template_delta) keep
+    their dtype, so they stay fp32 for AdamW. gemma_text_backbone passes False: right after
+    from_pretrained every parameter still has requires_grad=True. Runs on the device the
+    tensors live on, so after place() the cast happens on the GPU (r3 host-RAM SIGKILL)."""
+    done = {}                                  # a shared parameter is cast once, then reused
     with torch.no_grad():
         for sub in module.modules():
             for name, p in list(sub.named_parameters(recurse=False)):
-                if p.is_floating_point() and p.dtype != dtype:
-                    sub._parameters[name] = nn.Parameter(_cast(p.data, dtype), requires_grad=p.requires_grad)
+                if id(p) in done:
+                    sub._parameters[name] = done[id(p)]
+                elif p.is_floating_point() and p.dtype != dtype and not (skip_trainable and p.requires_grad):
+                    done[id(p)] = sub._parameters[name] = nn.Parameter(_cast(p.data, dtype),
+                                                                      requires_grad=p.requires_grad)
             for name, b in list(sub.named_buffers(recurse=False)):
                 if b is not None and b.is_floating_point() and b.dtype != dtype:
                     sub._buffers[name] = b.to(dtype)
