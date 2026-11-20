@@ -281,7 +281,14 @@ class PrismOpenJev(nn.Module):
         return self.backbone.get_input_embeddings()
 
     def resize_token_embeddings(self, n):
-        return self.backbone.resize_token_embeddings(n)
+        # mean_resizing=False: Gemma 4 also resizes the 2.35B-element PLE table, and HF's mean
+        # resizing builds fp32 copies + an 8960-dim covariance of it on the host (r3small:
+        # maxrss 28.9 GB at after_resize of ~30 GB). add_special_tokens sets the new rows.
+        return self.backbone.resize_token_embeddings(n, mean_resizing=False)
+
+    def get_per_layer_input_embeddings(self):
+        f = getattr(self.backbone, "get_per_layer_input_embeddings", None)
+        return f() if f else None
 
     def masks(self, b: PrismBatch):
         cfg = self.backbone.config

@@ -131,3 +131,45 @@ def test_build_cuda_path_converts_after_place(tmp_path, tok, monkeypatch):
     assert torch.isfinite(out).all()
     out.sum().backward()
     assert model.flag_head.weight.grad is not None
+
+
+def test_template_resize_skips_hf_mean_resizing(tok, monkeypatch):
+    """r3small: maxrss 28.9 GB at after_resize. Gemma 4 resizes the PLE table too, and HF
+    mean_resizing builds fp32 copies + a covariance of it on the host. The resize must pass
+    mean_resizing=False, and add_special_tokens sets the template rows of BOTH tables
+    from chunked row stats (finite, near the old mean)."""
+    import copy
+    from transformers import Gemma4TextConfig, Gemma4TextModel
+    from openjev.schema import SPECIAL_TOKENS, add_special_tokens
+    tk = copy.deepcopy(tok)
+    cfg = Gemma4TextConfig(vocab_size=len(tk), hidden_size=32, intermediate_size=64, num_hidden_layers=2,
+                           num_attention_heads=2, num_key_value_heads=1, head_dim=16,
+                           vocab_size_per_layer_input=len(tk), hidden_size_per_layer_input=4,
+                           num_kv_shared_layers=0, layer_types=["sliding_attention", "full_attention"])
+    torch.manual_seed(0)
+    model = prism.PrismOpenJev(Gemma4TextModel(cfg).to(torch.bfloat16))
+    seen = []
+    real = model.backbone._get_resized_embeddings
+
+    def spy(emb, n, pad, mean_resizing=True):
+        seen.append(mean_resizing)
+        return real(emb, n, pad, mean_resizing)
+
+    monkeypatch.setattr(model.backbone, "_get_resized_embeddings", spy)
+    ple_old = model.get_per_layer_input_embeddings().weight[:len(tk)].float().mean(0)
+    add_special_tokens(tk, model)
+    assert seen == [False, False]                           # input embeddings + PLE
+    ids = tk.convert_tokens_to_ids(SPECIAL_TOKENS)
+    ple = model.get_per_layer_input_embeddings().weight
+    assert ple.shape[0] >= len(tk) and ple.dtype == torch.bfloat16
+    rows = ple[ids].float()
+    assert torch.isfinite(rows).all()
+    assert (rows - ple_old).abs().mean() < ple[:len(tk) - len(ids)].float().std() * 0.5
+
+
+def test_row_stats_match_torch():
+    from openjev.schema import _row_stats
+    w = torch.randn(1000, 7) * 3 + 1
+    mean, std = _row_stats(w, 900, chunk=64)
+    assert torch.allclose(mean, w[:900].mean(0), atol=1e-5)
+    assert torch.allclose(std, w[:900].std(0).mean(), atol=1e-5)

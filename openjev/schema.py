@@ -188,11 +188,32 @@ def add_special_tokens(tokenizer, model, pad_to: int = 128, noise: float = 0.02)
     if len(tokenizer) > rows:
         model.resize_token_embeddings(-(-len(tokenizer) // pad_to) * pad_to)
     old = min(rows, len(tokenizer) - added)
+    tables = [model.get_input_embeddings()]
+    ple = getattr(model, "get_per_layer_input_embeddings", lambda: None)()
+    if ple is not None and ple.weight.shape[0] >= len(tokenizer):   # Gemma 4 PLE table
+        tables.append(ple)
     with torch.no_grad():
-        w = model.get_input_embeddings().weight
-        mean, std = w[:old].mean(dim=0), w[:old].std(dim=0).mean()
-        for i in new_ids:
-            w[i] = mean + noise * std * torch.randn_like(mean)
+        for emb in tables:
+            w = emb.weight
+            mean, std = _row_stats(w, old)
+            for i in new_ids:
+                w[i] = (mean + noise * std * torch.randn_like(mean)).to(w.dtype)
+
+
+def _row_stats(w, n: int, chunk: int = 2048):
+    """Mean row and mean per-column std of w[:n], a few rows at a time: the Gemma 4 PLE
+    table has 2.35B elements, so a whole-table fp32 .std() would need ~10 GB of host RAM."""
+    import torch
+
+    s = torch.zeros(w.shape[1], dtype=torch.float64, device=w.device)
+    s2 = torch.zeros_like(s)
+    for i in range(0, n, chunk):
+        x = w[i:min(i + chunk, n)].double()
+        s += x.sum(0)
+        s2 += (x * x).sum(0)
+    mean = s / n
+    var = (s2 / n - mean * mean).clamp_min(0) * n / max(n - 1, 1)
+    return mean.to(torch.float32), var.sqrt().mean().to(torch.float32)
 
 
 def encode(tokenizer, state: str, schema: Schema, max_state_tokens: int = 2048) -> Encoded:
