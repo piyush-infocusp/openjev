@@ -213,6 +213,32 @@ def test_mb_diag_and_restore(tmp_path, tok, monkeypatch):
         assert runs[0][k] == runs[1][k], k
 
 
+def test_subsample_and_packing_trial(tmp_path, tok):
+    """option_subsample_k and packing change only the training micro-batches: same records
+    (ids), the probe (loss_start) is unchanged, fewer padded tokens per micro-batch, and a
+    rerun is identical (per-record seeded sub-sampling)."""
+    bt, tp, targs, model, tk, dtype, data, probe, own = tiny_setup(tmp_path, tok)
+    snap, state = bt.snapshot(model), data.get_state()
+    st = {"fixed_mb": True, "global_batch": 8, "micro_batch": 4, "grad_accum": 2, "warmup_steps": 1,
+          "timed_steps": 1, "diag_mb": None, "trial_stream_sha": None}
+    base = {"grad_ckpt": "off", "dtype": "fp32", "ple_cpu": 0, "option_subsample_k": 0,
+            "packing": "off", "pack_len": 2048}
+
+    def trial(**kw):
+        return bt.run_trial(model, tk, data, state, snap, probe, targs, dict(base, **kw), "cpu", dtype,
+                            own, torch.get_num_threads(), {"value": 2.0 ** 16}, dict(st))
+    r0 = trial()
+    r1 = trial(option_subsample_k=4, packing="on", pack_len=256)
+    r2 = trial(option_subsample_k=4, packing="on", pack_len=256)
+    assert r0["status"] == r1["status"] == "ok", (r0, r1)
+    assert r0["rows_per_mb"] == 4 and r1["rows_per_mb"] < 4
+    assert r1["pad_frac"] < r0["pad_frac"]
+    assert r0["loss_start"] == r1["loss_start"]                 # probe: all options, unpacked
+    assert r0["data_ids_sha"] == r1["data_ids_sha"]
+    for k in ("loss_guard", "loss_end", "pad_frac", "rows_per_mb"):
+        assert r1[k] == r2[k], k
+
+
 def test_skipped_warmup_step_is_redone(tmp_path, tok, monkeypatch):
     """A warm-up step the fp16 GradScaler skips is redone on the same records, so the guard
     follows the same applied optimizer steps (and records) as a run without a skip."""
@@ -324,9 +350,12 @@ def test_report_importances_and_guard(tmp_path):
     impl = ol.implemented(space_)
     assert {d["name"] for d in impl} == {"bs", "grad_ckpt", "max_state_tokens", "torch_threads",
                                          "sdpa_backend", "ple_cpu", "attn_backend", "profile",
-                                         "dtype"}
-    assert [d["name"] for d in impl if not d["sample"]] == ["bs", "max_state_tokens", "ple_cpu", "dtype", "profile"]
-    assert all(not d["implemented"] for d in space_ if d["name"] in ("quant", "ddp", "packing"))
+                                         "dtype", "option_subsample_k", "packing", "pack_len"}
+    assert [d["name"] for d in impl if not d["sample"]] == ["bs", "max_state_tokens", "ple_cpu",
+                                                            "dtype", "profile"]
+    assert all(not d["implemented"] for d in space_ if d["name"] in ("quant", "ddp", "torch_compile"))
+    import bench_trials as bt
+    assert {d["name"] for d in impl} <= bt.TRIAL_PARAMS | bt.RELOAD_PARAMS   # every dim has a handler
     trials = tmp_path / "t.json"
     g = ["--db", str(db)] + space(tmp_path, small=False)
     ol.main(g + ["propose", "--n", "12", "--out", str(trials)])
@@ -463,7 +492,7 @@ def test_round1_study_still_works(tmp_path):
     out.write_text("old\n<!-- manual: kept by report -->\n\n## My notes\nkeep me\n")
     ol.main(g + ["report", "--out", str(out)])
     text = out.read_text()
-    assert "| ple_cpu | attn_backend | profile | samples/s |" in text
+    assert "| ple_cpu | attn_backend | profile | option_subsample_k | packing | pack_len | samples/s |" in text
     assert "| 0 | complete (base r1) |" in text and "| 3 | complete (base r3) |" in text
     assert "## Profiles" not in text and text.rstrip().endswith("keep me") and text.startswith("# OpenJev")
 

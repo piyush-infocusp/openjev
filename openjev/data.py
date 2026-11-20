@@ -93,3 +93,37 @@ def bucket(value: float, edges: list[float]) -> int:
         if value <= e:
             return i
     return len(edges)
+
+
+def subsample_options(record: Record, k: int, rng) -> Record:
+    """Training-only option sub-sampling (OJ-072): every `choice` question keeps its gold
+    option plus at most `k` random negatives, in their original order. Returns a NEW
+    Record (the Mixture hands out the same objects again, and eval must see all options);
+    the input is never changed. The result is still a valid Jev request: a choice with a
+    subset of its own options (>= 2), the same label, the same id.
+
+    k = 0, or k >= n - 1 options: the question is unchanged. noul (2 options) and score
+    (ordered levels; the graded reward uses level distances) are never sub-sampled. An
+    unlabelled choice question keeps k + 1 random options: it gives no loss, and under the
+    Prism mask its options are invisible to every other question, so trimming it is free.
+    """
+    from .schema import Choice, Schema
+
+    if k <= 0:
+        return record
+    qs, changed = [], False
+    for q, y in zip(record.schema.questions, record.answers):
+        opts = q.options if q.type == "choice" else None
+        if opts is None or len(opts) <= k + 1:
+            qs.append(q)
+            continue
+        if y is None:
+            keep = set(rng.sample(opts, k + 1))
+        else:
+            keep = {y, *rng.sample([o for o in opts if o != y], k)}
+        qs.append(Choice(q.name, {o: d for o, d in q.criteria.items() if o in keep}, q.instructions))
+        changed = True
+    if not changed:
+        return record
+    return Record(record.id, record.source, record.domain, record.state, Schema(qs),
+                  list(record.answers), record.weight)

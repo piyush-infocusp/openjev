@@ -53,10 +53,12 @@ class PrismBatch(Batch):
     segment: torch.Tensor = None       # (B, T) long: 0 shared, >0 option id, -1 pad
     question: torch.Tensor = None      # (B, T) long: question index of option/flag, -1 else
     is_flag: torch.Tensor = None       # (B, T) bool
+    doc: torch.Tensor = None           # (B, T) long: request index inside its row, -1 pad
+                                       # (all 0 when unpacked; packing: OJ-060)
 
     def to(self, device) -> "PrismBatch":
         super().to(device)
-        for k in ("position_ids", "segment", "question", "is_flag"):
+        for k in ("position_ids", "segment", "question", "is_flag", "doc"):
             setattr(self, k, getattr(self, k).to(device))
         return self
 
@@ -105,36 +107,61 @@ def layout(ids: list[int], readouts: list[dict], opt_id: int, flag_id: int):
 
 
 def prism_collate(tokenizer, records: list[Record], max_state_tokens: int = 2048,
-                  pad_to_multiple_of: int = 8) -> PrismBatch:
+                  pad_to_multiple_of: int = 8, pack_len: int = 0) -> PrismBatch:
+    """Encode `records` into one PrismBatch.
+
+    pack_len = 0: one request per row (right-padded). pack_len > 0 (OJ-060): requests are
+    packed into rows of <= pack_len tokens (openjev.packing.pack_rows; a longer request
+    gets its own row). Inside a row each request keeps its own layout and positions that
+    restart at 0, and `doc` (its index in the row) makes the mask block-diagonal, so the
+    flag logits equal the unpacked ones. Either way flag_index, groups, labels and schemas
+    follow the order of `records`, so the logits come out in the same order."""
     enc = [encode(tokenizer, r.state, r.schema, max_state_tokens) for r in records]
     opt_id = tokenizer.convert_tokens_to_ids(OPT)
     flag_id = tokenizer.convert_tokens_to_ids(FLAG)
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
+    lens = [len(e.input_ids) for e in enc]
+    if pack_len:
+        from .packing import pack_rows
+        rows_of = pack_rows(lens, pack_len)
+    else:
+        rows_of = [[i] for i in range(len(enc))]
 
-    n = max(len(e.input_ids) for e in enc)
+    n = max(sum(lens[i] for i in r) for r in rows_of)
     if pad_to_multiple_of:
         n = -(-n // pad_to_multiple_of) * pad_to_multiple_of
-    B = len(enc)
+    B = len(rows_of)
     input_ids = torch.full((B, n), pad_id, dtype=torch.long)
     attn = torch.zeros((B, n), dtype=torch.long)
     pos = torch.zeros((B, n), dtype=torch.long)
     seg = torch.full((B, n), -1, dtype=torch.long)
     qix = torch.full((B, n), -1, dtype=torch.long)
     isf = torch.zeros((B, n), dtype=torch.bool)
+    doc = torch.full((B, n), -1, dtype=torch.long)
+
+    where = {}  # record index -> (row, column offset)
+    for ri, row in enumerate(rows_of):
+        off, last = 0, -1
+        for d, i in enumerate(row):
+            e, L = enc[i], lens[i]
+            s, q, f, p = layout(e.input_ids, e.readouts, opt_id, flag_id)
+            sl = slice(off, off + L)
+            input_ids[ri, sl] = torch.tensor(e.input_ids)
+            attn[ri, sl] = 1
+            seg[ri, sl], qix[ri, sl] = torch.tensor(s), torch.tensor(q)
+            isf[ri, sl], pos[ri, sl] = torch.tensor(f), torch.tensor(p)
+            doc[ri, sl] = d
+            where[i] = (ri, off)
+            off, last = off + L, max(p)
+        pos[ri, off:] = torch.arange(last + 1, last + 1 + n - off)
 
     rows, cols, groups, start = [], [], [], 0
     for i, e in enumerate(enc):
-        L = len(e.input_ids)
-        s, q, f, p = layout(e.input_ids, e.readouts, opt_id, flag_id)
-        input_ids[i, :L] = torch.tensor(e.input_ids)
-        attn[i, :L] = 1
-        seg[i, :L], qix[i, :L] = torch.tensor(s), torch.tensor(q)
-        isf[i, :L], pos[i, :L] = torch.tensor(f), torch.tensor(p)
-        pos[i, L:] = torch.arange(max(p) + 1, max(p) + 1 + n - L)
+        ri, off = where[i]
         ex = []
         for rq in e.readouts:
-            rows += [i] * len(rq["flags"])
-            cols += rq["flags"]
+            rows += [ri] * len(rq["flags"])
+            cols += [off + f for f in rq["flags"]]
             ex.append({"type": rq["type"], "name": rq["name"], "start": start,
                        "end": start + len(rq["flags"])})
             start += len(rq["flags"])
@@ -142,11 +169,14 @@ def prism_collate(tokenizer, records: list[Record], max_state_tokens: int = 2048
     flag_index = torch.tensor(list(zip(rows, cols)), dtype=torch.long).reshape(-1, 2)
     return PrismBatch(input_ids, attn, flag_index, groups,
                       [list(r.answers) for r in records], [r.schema for r in records],
-                      position_ids=pos, segment=seg, question=qix, is_flag=isf)
+                      position_ids=pos, segment=seg, question=qix, is_flag=isf, doc=doc)
 
 
-def prism_mask(segment, question, is_flag, position_ids, window: int | None = None):
-    """(B, 1, T, T) bool mask, True = may attend."""
+def prism_mask(segment, question, is_flag, position_ids, window: int | None = None,
+               doc: torch.Tensor | None = None):
+    """(B, 1, T, T) bool mask, True = may attend. doc (B, T): with packing, a token only
+    sees tokens of its own request (block-diagonal); segment, question and position ids
+    restart in every request, so without it requests would see each other."""
     sq, sk = segment[:, :, None], segment[:, None, :]
     qq, qk = question[:, :, None], question[:, None, :]
     real_k = sk >= 0
@@ -158,6 +188,8 @@ def prism_mask(segment, question, is_flag, position_ids, window: int | None = No
     # same keys, so equal-length options get identical logits (OJ-080).
     m = m | (is_flag[:, :, None] & is_flag[:, None, :] & (qq == qk) & (qk >= 0))
     m = m & real_k
+    if doc is not None:
+        m = m & (doc[:, :, None] == doc[:, None, :])
     if window is not None:
         d = (position_ids[:, :, None] - position_ids[:, None, :]).abs()
         m = m & (d < window)
@@ -294,6 +326,8 @@ class PrismOpenJev(nn.Module):
         cfg = self.backbone.config
         dtype = self.get_input_embeddings().weight.dtype
         if self.causal:
+            # Plain causal ablation: ignores segments, positions and doc, so it cannot
+            # take packed rows (train_prism rejects --causal with --packing on).
             T = b.input_ids.shape[1]
             tri = torch.tril(torch.ones(T, T, dtype=torch.bool, device=b.input_ids.device))
             full = tri[None, None] & (b.attention_mask[:, None, None, :] > 0)
@@ -301,9 +335,9 @@ class PrismOpenJev(nn.Module):
             ar = torch.arange(T, device=full.device)
             slide = full & ((ar[:, None] - ar[None, :]) < cfg.sliding_window)
         else:
-            full = prism_mask(b.segment, b.question, b.is_flag, b.position_ids)
+            full = prism_mask(b.segment, b.question, b.is_flag, b.position_ids, doc=b.doc)
             slide = prism_mask(b.segment, b.question, b.is_flag, b.position_ids,
-                               window=getattr(cfg, "sliding_window", None))
+                               window=getattr(cfg, "sliding_window", None), doc=b.doc)
         return {"full_attention": to_additive(full, dtype),
                 "sliding_attention": to_additive(slide, dtype)}
 

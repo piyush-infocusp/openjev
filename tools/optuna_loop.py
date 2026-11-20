@@ -661,7 +661,7 @@ ATTRS = ("samples_per_sec", "tokens_per_sec", "padded_tokens_per_sec", "pad_frac
          "error", "group_load_s", "attn_backend", "warmup_s", "is_profile", "profile",
          "sdpa_kernels", "graphs_in_timed_loop", "dtype", "mb_used", "grad_accum", "global_batch",
          "fixed_mb", "bs_ignored", "mb_diag", "timed_steps", "warmup_ids_sha", "data_ids_sha",
-         "records_used", "trial_stream_sha", "stream_wrapped", "warmup_retries")
+         "records_used", "trial_stream_sha", "stream_wrapped", "warmup_retries", "rows_per_mb")
 PRUNE_STATUS = {"oom", "nan", "unsupported"}
 
 

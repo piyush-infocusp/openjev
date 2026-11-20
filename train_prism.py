@@ -46,7 +46,7 @@ import torch
 import torch.nn.functional as F
 
 from openjev import add_special_tokens, target_index
-from openjev.data import read_jsonl
+from openjev.data import read_jsonl, subsample_options
 from openjev.mix import Mixture
 from openjev.prism import PrismOpenJev, gemma_text_backbone, log_rss, prism_collate
 from openjev.rlcd import ece, soft_ece
@@ -87,7 +87,31 @@ def parse(argv=None):
     ap.add_argument("--grad-ckpt", action="store_true")
     ap.add_argument("--ple-cpu", type=int, default=1, help="keep the PLE table on CPU (CUDA only)")
     ap.add_argument("--cpu", action="store_true")
-    return ap.parse_args(argv)
+    ap.add_argument("--option-subsample-k", type=int, default=0,
+                    help="training only: each choice question keeps its gold option + <= K random "
+                         "negatives (0 = off); eval always uses all options (OJ-072)")
+    ap.add_argument("--packing", default="off", choices=["off", "on"],
+                    help="training only: pack each micro-batch into rows of <= --pack-len tokens, "
+                         "doc-id block-diagonal mask, positions restart per request (OJ-060)")
+    ap.add_argument("--pack-len", type=int, default=2048, help="row length with --packing on")
+    args = ap.parse_args(argv)
+    if args.option_subsample_k < 0:
+        ap.error("--option-subsample-k must be >= 0")
+    if args.pack_len <= 0:
+        ap.error("--pack-len must be > 0")
+    if args.packing == "on" and args.causal:
+        ap.error("--causal ignores the doc mask and per-request positions; it cannot use --packing on")
+    return args
+
+
+def train_batch(tok, records, args, rng):
+    """One TRAINING micro-batch: option sub-sampling (--option-subsample-k, with `rng`)
+    and packing (--packing / --pack-len). Eval and the probe use prism_collate directly
+    (all options, unpacked)."""
+    if args.option_subsample_k:
+        records = [subsample_options(r, args.option_subsample_k, rng) for r in records]
+    return prism_collate(tok, records, args.max_state_tokens,
+                         pack_len=args.pack_len if args.packing == "on" else 0)
 
 
 # ---------------------------------------------------------------- questions
@@ -457,13 +481,14 @@ def main():
         except Exception as e:
             print(f"warning: TensorBoard logging failed ({type(e).__name__}: {e})", flush=True)
 
+    sub_rng = random.Random(f"subsample:{args.seed}")   # own stream: eval never draws from it
     log = Path(args.save_dir) / "log.jsonl"
     log.parent.mkdir(parents=True, exist_ok=True)
     best, t0, bad = float("inf"), time.time(), 0
     for step in range(args.steps):
         stats = {}
         for _ in range(args.grad_accum):
-            b = prism_collate(tok, mixture.take(args.bs), args.max_state_tokens).to(device)
+            b = train_batch(tok, mixture.take(args.bs), args, sub_rng).to(device)
             if args.algo == "grpo":
                 with autocast(device, model):
                     with torch.no_grad():

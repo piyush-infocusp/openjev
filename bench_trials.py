@@ -6,7 +6,9 @@ trials that share the same `requires_reload` params (ple_cpu, dtype). Each trial
   1. resets: the start weights (LoRA, flag head, template delta), no grads, the data
      stream at its start, the seed; then a fresh optimizer, so all trials start equal;
   2. applies its params (grad_ckpt, max_state_tokens, torch_threads, sdpa_backend,
-     attn_backend; the attention backend is swapped at runtime, see openjev/attn_backends.py);
+     attn_backend; the attention backend is swapped at runtime, see openjev/attn_backends.py;
+     option_subsample_k, packing and pack_len change only the TRAINING micro-batches: the
+     probe and the diagnostic keep all options, unpacked, so the guard stays comparable);
   3. round baseline only (`diag_mb` in its entry): one forward+backward at micro-batch
      diag_mb (16) to record whether it WOULD fit (peak < 0.92 x GPU memory), then the
      reset of step 1 again. It never changes the micro-batch;
@@ -76,13 +78,14 @@ import torch
 import train_prism as tp
 from openjev import attn_backends as ab
 from openjev import trial_data as td
+from openjev.data import subsample_options
 from openjev.mix import Mixture
 from openjev.prism import log_rss, prism_collate
 
 # Params this script knows how to apply. A trial with any other param fails, so a
 # dimension marked `implemented: true` without code here never gives fake numbers.
 TRIAL_PARAMS = {"bs", "grad_ckpt", "max_state_tokens", "torch_threads", "sdpa_backend",
-                "attn_backend", "profile"}
+                "attn_backend", "profile", "option_subsample_k", "packing", "pack_len"}
 RELOAD_PARAMS = {"ple_cpu", "dtype"}
 # yaml dtype choice -> train_prism --dtype. "bf16_emulated" is what --dtype auto picked on
 # T4 before OJ-081 (bf16 without native support on sm75).
@@ -429,11 +432,29 @@ def apply_params(model, params, targs, base_threads):
     return int(params.get("max_state_tokens", targs.max_state_tokens)), params.get("sdpa_backend", "default")
 
 
+def data_params(params, targs) -> tuple[int, int]:
+    """(option_subsample_k, pack_len or 0) for the TRAINING batches of a trial; the probe,
+    the diagnostic and eval stay on all options, unpacked. Defaults = train_prism flags."""
+    k = int(params.get("option_subsample_k", targs.option_subsample_k))
+    on = is_on(params["packing"]) if "packing" in params else targs.packing == "on"
+    return k, (int(params.get("pack_len", targs.pack_len)) if on else 0)
+
+
+def train_collate(tok, recs, mst, pad_mult, k, pack_len, seed):
+    """A training micro-batch. Sub-sampling draws from a per-record seeded RNG (str seed:
+    stable across processes), so every trial, a redone warm-up step and a second run see
+    the same options for the same record."""
+    if k:
+        recs = [subsample_options(r, k, random.Random(f"{seed}:{r.id}")) for r in recs]
+    return prism_collate(tok, recs, mst, pad_to_multiple_of=pad_mult, pack_len=pack_len)
+
+
 def _run_trial(model, tok, data, data_state, snap, probe, targs, params, device, dtype, own,
                base_threads, scale, attn, st):
     reset(model, data, snap, data_state, targs.seed)
     mb, accum, gb = st["micro_batch"], st["grad_accum"], st["global_batch"]
     mst, backend = apply_params(model, params, targs, base_threads)
+    sub_k, pack_len = data_params(params, targs)
     profile = is_on(params.get("profile", 0))
     # flex compiles one graph per shape: pad T to the BlockMask block so shapes repeat.
     pad_mult = ab.FLEX_BLOCK if attn == "flex" else 8
@@ -455,15 +476,17 @@ def _run_trial(model, tok, data, data_state, snap, probe, targs, params, device,
     scale_start = scale["value"]
     loss_start = probe_loss(model, tok, probe, targs, device)
 
-    losses, counts, skipped, ids = [], {"real": 0, "pad": 0}, 0, []
+    losses, counts, skipped, ids = [], {"real": 0, "pad": 0, "rows": 0, "mbs": 0}, 0, []
 
     def next_batch():
         with torch.profiler.record_function("oj::collate"):
             recs = data.take(mb)
-            b = prism_collate(tok, recs, mst, pad_to_multiple_of=pad_mult)
+            b = train_collate(tok, recs, mst, pad_mult, sub_k, pack_len, targs.seed)
         ids.extend(r.id for r in recs)
         counts["real"] += int(b.attention_mask.sum())          # CPU, no sync
         counts["pad"] += b.attention_mask.numel()
+        counts["rows"] += b.input_ids.shape[0]
+        counts["mbs"] += 1
         return b
 
     def step():
@@ -496,7 +519,7 @@ def _run_trial(model, tok, data, data_state, snap, probe, targs, params, device,
     warm_ids = list(ids)
     losses.clear()
     loss_guard = probe_loss(model, tok, probe, targs, device)
-    counts.update(real=0, pad=0)
+    counts.update(real=0, pad=0, rows=0, mbs=0)
     if device == "cuda":
         torch.cuda.synchronize()
     graphs0 = dynamo_graphs()
@@ -521,7 +544,8 @@ def _run_trial(model, tok, data, data_state, snap, probe, targs, params, device,
     nan = not all(math.isfinite(x) for x in train + [loss_start, loss_guard, loss_end])
     k = max(1, min(3, len(train) // 2))
     extra.update(warmup_s=warmup_s, warmup_ids_sha=ids_sha(warm_ids), data_ids_sha=ids_sha(ids),
-                 records_used=len(ids), timed_steps=st["timed_steps"])
+                 records_used=len(ids), timed_steps=st["timed_steps"],
+                 rows_per_mb=counts["rows"] / max(counts["mbs"], 1))
     if getattr(data, "wrapped", False):
         extra["stream_wrapped"] = True
     if graphs0 is not None:
@@ -637,6 +661,7 @@ def _validate_one(model, tok, mixture, state0, val, targs, params, device, dtype
     try:
         mixture.set_state(state0)
         mst, backend = apply_params(model, params, targs, base_threads)
+        sub_k, pack_len = data_params(params, targs)
         pad_mult = ab.FLEX_BLOCK if attn == "flex" else 8
         opt = tp.make_optimizer(model, targs)
         warm = max(1, int(targs.warmup * n_steps))          # same schedule as train_prism
@@ -647,7 +672,8 @@ def _validate_one(model, tok, mixture, state0, val, targs, params, device, dtype
         t0 = time.perf_counter()
         for _ in range(n_steps):
             loss, sk = accum_step(model, opt, scaler,
-                                  lambda: prism_collate(tok, mixture.take(mb), mst, pad_to_multiple_of=pad_mult),
+                                  lambda: train_collate(tok, mixture.take(mb), mst, pad_mult, sub_k,
+                                                        pack_len, targs.seed),
                                   gb // mb, device, backend)
             sched.step()
             losses.append(float(loss))

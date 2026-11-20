@@ -167,35 +167,44 @@ dimensions:
       masks, PLE lookup, copies and collate. Objective is still samples/s. Set only with
       `propose --enqueue-json`. PyTorch profiler recipe.
 
-  # ------------------------------------------------------------ planned (not sampled yet)
-
   - name: option_subsample_k
-    type: categorical
-    choices: [0, 8, 16, 24]
+    type: int
+    low: 0
+    high: 24
+    step: 4
     default: 0
     requires_reload: false
-    implemented: false
+    implemented: true
     idea: >-
-      OJ-072. Train on the gold option + k random negatives (0 = all options); clinc150 and
-      banking77 templates shrink from ~1000 to ~200 tokens. Mikolov et al. 2013, arXiv:1310.4546.
+      OJ-072. Train on the gold option + k random negatives per choice question (0 = all
+      options); eval and the probe always use all options. clinc150 and banking77 templates
+      shrink from ~1000 to ~200 tokens. Never sampled before r4, so int (was a planned
+      categorical) is safe. train_prism --option-subsample-k. Mikolov et al. 2013, arXiv:1310.4546.
 
   - name: packing
     type: categorical
     choices: ["off", "on"]
     default: "off"
     requires_reload: false
-    implemented: false
+    implemented: true
     idea: >-
-      OJ-060. Hierarchical packing with a doc-id block-diagonal mask, positions restart per
-      request. Krell et al. 2021, arXiv:2107.02027.
+      OJ-060. Hierarchical packing of each micro-batch (source mix -> length bucket ->
+      first-fit-decreasing rows <= pack_len) with a doc-id block-diagonal mask, positions
+      restart per request (packed flag logits == unpacked, tests/test_packing.py). Same
+      records per micro-batch, fewer padded tokens. train_prism --packing.
+      Krell et al. 2021, arXiv:2107.02027.
 
   - name: pack_len
     type: categorical
     choices: [1024, 2048]
     default: 2048
     requires_reload: false
-    implemented: false
-    idea: OJ-060. Row length for packing (used only when packing is on).
+    implemented: true
+    idea: >-
+      OJ-060. Row length for packing (used only when packing is on; a longer request gets a
+      row of its own). train_prism --pack-len.
+
+  # ------------------------------------------------------------ planned (not sampled yet)
 
   - name: ddp
     type: categorical
