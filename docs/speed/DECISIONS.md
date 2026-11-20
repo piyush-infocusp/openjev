@@ -25,6 +25,7 @@ it, why, and the evidence. Results go in `EXPERIMENTS.md` (Optuna trials) and `S
 | 2026-11-20 | `attn_backend=flex` **rejected on T4** | Claude (r3small evidence) | Trial 16: the Triton FlexAttention kernel needs 65536 B shared memory, the T4 hardware limit | rejected (T4) |
 | 2026-11-20 | Round 4: baseline **ple_cpu=1** (yaml default) | coordinator | r3small: ple_cpu=1 was the only config that fit at mb 8 (0.808 samples/s, 12.32 GB); ple_cpu=0 and chunked_math+ckpt off ran out of memory, so the r3 guard had no baseline | active |
 | 2026-11-20 | Template resize with `mean_resizing=False`; template rows of the embedding AND the PLE table from chunked row stats | Claude | r3small maxrss 28.9 GB (of ~30) at after_resize: Gemma 4 also resizes the 2.35B-element PLE table, and HF mean resizing built fp32 copies + an 8960-dim covariance on the host | done |
+| 2026-11-20 | Round 4 result: keep **sdpa_default** (baseline); attention backend is not the bottleneck at mb 8. Next round targets padding (pad_frac 0.52: length-grouped micro-batches / packing) and mb 16 (fits at 13.1 GB) | Claude (r4 evidence) | Kernel v6: baseline 0.825, chunked_math 0.829, sdpa_bool 0.830 samples/s (within ~0.6%, noise); chunked_math + ckpt off OOM at mb 8; host maxrss 14.6 GB after the resize fix (was 28.9) | active |
 
 ## Measurements behind the decisions
 
