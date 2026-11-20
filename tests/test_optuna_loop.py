@@ -52,6 +52,12 @@ def space(tmp_path, small=True, name="space", **kw):
     raw = yaml.safe_load(REAL_YAML.read_text())
     if small:
         raw.update(SMALL)
+    # The mechanics tests were written against round 3 (ple_cpu default 0); pin that here so
+    # a later round's defaults (r4: ple_cpu 1) do not change them. kw can still override.
+    raw["round"] = 3
+    for d in raw["dimensions"]:
+        if d["name"] == "ple_cpu":
+            d["default"] = 0
     raw.update(kw)
     d = tmp_path / name
     d.mkdir(exist_ok=True)
@@ -402,7 +408,7 @@ def test_unknown_param_fails_trial(tmp_path, tok):
 def test_enqueue_json_is_validated(tmp_path):
     impl = ol.implemented(ol.load_space(REAL_YAML))
     full = ol.parse_enqueue(['{"bs": 8}'], impl)[0]
-    assert full["bs"] == 8 and full["ple_cpu"] == 0 and full["profile"] == 0 and full["dtype"] == "fp16"
+    assert full["bs"] == 8 and full["ple_cpu"] == 1 and full["profile"] == 0 and full["dtype"] == "fp16"  # r4 yaml
     with pytest.raises(SystemExit):
         ol.parse_enqueue(['{"nope": 1}'], impl)
     with pytest.raises(SystemExit):

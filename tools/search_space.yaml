@@ -29,7 +29,9 @@
 # mask and the defaults changed (ple_cpu 0, dtype fp16), so round 1's baseline is stale.
 # Round 3: fixed micro-batch and global batch (Idea 5), fixed trial data, so round 2's
 # numbers (one optimizer step per micro-batch of a sampled bs) are not comparable.
-round: 3
+# Round 4: baseline ple_cpu=1 (r3small: ple_cpu=0 and chunked_math+ckpt off ran out of memory
+# at mb 8; ple_cpu=1 was the only config that fit), so the quality guard has a baseline.
+round: 4
 
 # Optuna study in runs/optuna/study.db. Round 3 starts a NEW study so the dashboard,
 # the importances and TPE only see fair trials (fixed micro-batch, global batch, trial
@@ -113,7 +115,7 @@ dimensions:
   - name: ple_cpu
     type: categorical
     choices: [1, 0]
-    default: 0
+    default: 1      # r4: 0 does not fit at mb 8 on a T4 (r3small trial 13 OOM)
     requires_reload: true
     implemented: true
     idea: >-
@@ -149,6 +151,8 @@ dimensions:
       so attention memory is O(chunk*T), not O(T^2) (may allow grad_ckpt off). flex:
       FlexAttention with a BlockMask from the Prism mask (Dong et al. 2024,
       arXiv:2412.05496); "unsupported" if Triton cannot build it on T4. SDPA docs.
+      r3small: flex REJECTED on T4 (Triton kernel needs 65536 B shared memory, the T4
+      hardware limit); do not enqueue it on T4.
 
   - name: profile
     type: categorical
