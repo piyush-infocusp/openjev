@@ -70,6 +70,9 @@ import json
 import math
 import random
 import time
+import os
+import subprocess
+import sys
 import traceback
 from pathlib import Path
 
@@ -110,8 +113,111 @@ def parse(argv=None):
     ap.add_argument("--validate", default="", help="quality checkpoint plan (optuna_loop.py validate-plan)")
     ap.add_argument("--val-set", default="", help="frozen val set for --validate")
     ap.add_argument("--out", default="/kaggle/working/out/optuna_results.json")
+    ap.add_argument("--dual-gpu", action="store_true",
+                    help="split trials in 2 shards, one subprocess per GPU (CUDA_VISIBLE_DEVICES=0/1)")
+    ap.add_argument("--gpu-index", type=int, default=None, help="(shard child) physical GPU index")
+    ap.add_argument("--ready-file", default="", help="(shard child) touched once the model load is done")
+    ap.add_argument("--wait-ready", type=float, default=1500.0,
+                    help="dual-gpu: max seconds to wait for shard 0's ready file before starting shard 1")
     own, rest = ap.parse_known_args(argv)
     return own, tp.parse(rest)
+
+
+# ---------------------------------------------------------------- dual-gpu shards
+
+LOAD_COST, TRIAL_COST = 7.0, 1.0       # minutes: a model load, one trial (balancing only)
+
+
+def _group_key(t):
+    keys = t.get("reload_keys") or sorted(RELOAD_PARAMS & set(t["params"]))
+    return tuple((k, t["params"][k]) for k in sorted(keys) if k in t["params"])
+
+
+def split_shards(trials: list, n: int = 2) -> list[list]:
+    """Split trials into n shards. Whole reload groups stay together (a group costs one model
+    load) and are balanced greedily by cost; if that leaves a shard empty (e.g. one group), the
+    largest group is dealt round-robin instead. Order inside a shard follows the input."""
+    groups: dict[tuple, list] = {}
+    for t in trials:
+        groups.setdefault(_group_key(t), []).append(t)
+    cost = lambda g: LOAD_COST + TRIAL_COST * len(g)
+    shards: list[list[list]] = [[] for _ in range(n)]
+    load = [0.0] * n
+    for g in sorted(groups.values(), key=cost, reverse=True):
+        i = load.index(min(load))
+        shards[i].append(g)
+        load[i] += cost(g)
+    out = [[t for g in sh for t in g] for sh in shards]
+    if len(trials) >= n and any(not s for s in out):
+        out = [[] for _ in range(n)]
+        for g in groups.values():
+            for j, t in enumerate(g):
+                out[j % n].append(t)
+    order = {id(t): i for i, t in enumerate(trials)}
+    return [sorted(s, key=lambda t: order[id(t)]) for s in out]
+
+
+def merge_results(paths: list, out: Path, extra_meta: dict | None = None) -> dict:
+    """Merge shard result files into one optuna_results.json ({"meta","results"}, the format
+    tools/optuna_loop.py ingest reads). Missing/partial shards are skipped; results sorted by
+    trial_number; meta comes from the first shard that has one."""
+    meta, results = {}, []
+    for p in paths:
+        try:
+            d = json.loads(Path(p).read_text())
+        except (OSError, ValueError):
+            continue
+        meta = meta or d.get("meta") or {}
+        results += d.get("results") or []
+    results.sort(key=lambda r: r.get("trial_number", 0))
+    doc = {"meta": {**meta, **(extra_meta or {})}, "results": results}
+    tmp = Path(out).with_suffix(".tmp")
+    tmp.write_text(json.dumps(doc, indent=1))
+    tmp.replace(out)
+    return doc
+
+
+def run_dual(own, argv) -> int:
+    """Parent: one bench_trials.py subprocess per GPU, shard 1 staggered until shard 0 has
+    loaded its model (two concurrent host-RAM load peaks would risk a SIGKILL)."""
+    out = Path(own.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    shards = [s for s in split_shards(json.loads(Path(own.trials).read_text()), 2) if s]
+    drop = ("--trials", "--out", "--gpu-index", "--ready-file", "--wait-ready")
+    base, k, argv = [], 0, list(argv)
+    while k < len(argv):                          # drop parent-only / per-shard flags
+        a = argv[k]
+        if a == "--dual-gpu":
+            k += 1
+        elif a in drop:
+            k += 2
+        elif a.split("=")[0] in drop:
+            k += 1
+        else:
+            base.append(a)
+            k += 1
+    procs, files, prev_ready = [], [], None
+    for i, sh in enumerate(shards):
+        tf, rf, ready = (out.with_name(f"{out.stem}.shard{i}{x}") for x in (".trials.json", ".json", ".ready"))
+        tf.write_text(json.dumps(sh))
+        ready.unlink(missing_ok=True)
+        files.append(rf)
+        if i > 0:
+            t0 = time.time()
+            while not prev_ready.exists() and procs[-1].poll() is None and time.time() - t0 < own.wait_ready:
+                time.sleep(2)
+            print(json.dumps({"dual_gpu_stagger": i, "waited_s": round(time.time() - t0, 1),
+                              "ready": prev_ready.exists()}), flush=True)
+        cmd = [sys.executable, str(Path(__file__).resolve()), *base, "--trials", str(tf), "--out", str(rf),
+               "--gpu-index", str(i), "--ready-file", str(ready)]
+        env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(i)}
+        print(json.dumps({"dual_gpu_launch": i, "trials": [t["trial_number"] for t in sh]}), flush=True)
+        procs.append(subprocess.Popen(cmd, env=env))
+        prev_ready = ready
+    codes = [p.wait() for p in procs]
+    merge_results(files, out, {"dual_gpu": True, "shards": len(shards), "shard_exit": codes})
+    print(json.dumps({"bench_done_dual": str(out), "exit": codes}), flush=True)
+    return max(codes) if codes else 0
 
 
 # ---------------------------------------------------------------- params
@@ -696,6 +802,8 @@ def _validate_one(model, tok, mixture, state0, val, targs, params, device, dtype
 
 def main(argv=None):
     own, targs = parse(argv)
+    if own.dual_gpu and not own.validate and own.gpu_index is None:
+        raise SystemExit(run_dual(own, sys.argv[1:] if argv is None else argv))
     device = tp.pick_device(targs)
     n_gpu = torch.cuda.device_count() if device == "cuda" else 0
     meta = {"device": device, "n_gpu": n_gpu,
@@ -708,6 +816,8 @@ def main(argv=None):
 
     def emit(r):
         r = {k: clean(v) for k, v in r.items()}
+        if own.gpu_index is not None:
+            r["gpu_index"] = own.gpu_index
         results.append(r)
         print(json.dumps({"optuna_trial": r}), flush=True)
         tmp = out.with_suffix(".tmp")
@@ -775,6 +885,8 @@ def main(argv=None):
                       "gpu_name": meta["gpu_name"]})
             continue
         load_s = time.perf_counter() - t_load
+        if own.ready_file:
+            Path(own.ready_file).touch()
         scale = {"value": 2.0 ** 16}          # GradScaler scale, carried within the group
         print(json.dumps({"group": dict(key), "load_s": round(load_s, 1)}), flush=True)
         for t in group:
@@ -807,6 +919,8 @@ def main(argv=None):
         del model, snap
         model = None
     torch.set_num_threads(base_threads)
+    if own.ready_file:
+        Path(own.ready_file).touch()
     print(json.dumps({"bench_done": len(results), "out": str(out)}), flush=True)
 
 

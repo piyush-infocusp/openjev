@@ -43,7 +43,14 @@ if PROFILE == "optuna":
     print("=== OPTUNA trials ===\n" + open("trials.json").read(), flush=True)
     # Round 3+: the frozen trial stream (record ids, bundled by build.sh); bench checks its sha.
     stream = ["--trial-stream", "trial_stream.json"] if os.path.exists("trial_stream.json") else []
-    subprocess.check_call([sys.executable, "bench_trials.py", "--trials", "trials.json",
+    # Dual-GPU (2xT4) is the default: shards run one per GPU, GPU1 staggered after GPU0's load.
+    # DUAL_GPU=0 (or a single visible GPU) falls back to sequential trials on GPU 0.
+    import json, torch
+    dual = (os.environ.get("DUAL_GPU", "1") != "0" and torch.cuda.device_count() >= 2
+            and len(json.load(open("trials.json"))) > 1)
+    print(f"=== OPTUNA dual_gpu={dual} (gpus={torch.cuda.device_count()}) ===", flush=True)
+    subprocess.check_call([sys.executable, "bench_trials.py", *(["--dual-gpu"] if dual else []),
+                           "--trials", "trials.json",
                            "--trial-seconds", os.environ.get("TRIAL_SECONDS", "50"),
                            "--out", f"{OUT}/optuna_results.json",
                            "--model", "google/gemma-4-E2B-it", "--train", f"{data}/*.train.jsonl",

@@ -657,7 +657,7 @@ def dist_suggest(trial, name, dist):
 ATTRS = ("samples_per_sec", "tokens_per_sec", "padded_tokens_per_sec", "pad_frac", "s_per_step",
          "s_per_sample", "steps", "samples", "seconds", "peak_mem_gb", "loss_start",
          "loss_guard", "guard_steps", "loss_end", "train_loss_first", "train_loss_last",
-         "scale_start", "scale_end", "skipped_steps", "n_gpu", "gpu_name", "status",
+         "scale_start", "scale_end", "skipped_steps", "n_gpu", "gpu_name", "gpu_index", "status",
          "error", "group_load_s", "attn_backend", "warmup_s", "is_profile", "profile",
          "sdpa_kernels", "graphs_in_timed_loop", "dtype", "mb_used", "grad_accum", "global_batch",
          "fixed_mb", "bs_ignored", "mb_diag", "timed_steps", "warmup_ids_sha", "data_ids_sha",
