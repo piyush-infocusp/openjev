@@ -1,0 +1,17 @@
+[
+ {
+  "ddp": "on",
+  "sync_mode": "ddp",
+  "_idea": "r7 DDP on 2xT4 (OJ-062) on the fixed multi-length bench set: gradient all-reduce every optimizer step",
+  "_hypothesis": "each rank runs 2 of the 4 micro-batches per step, so weighted samples/s ~1.8-1.9x the 1-GPU baseline minus the all-reduce of the LoRA grads",
+  "_reference": "Li et al. 2020, PyTorch Distributed, arXiv:2006.15704"
+ },
+ {
+  "ddp": "on",
+  "sync_mode": "local_sgd",
+  "sync_every": 50,
+  "_idea": "r7 local SGD K=50 on 2xT4 (OJ-062) on the fixed multi-length bench set",
+  "_hypothesis": "no per-step all-reduce. NOTE: a trial has only 6 optimizer steps (1 warm-up + 5 buckets x 1), so K=50 never averages inside the timed loop: this measures no-sync 2-rank speed (the upper bound for DDP)",
+  "_reference": "Lin et al. 2020, Don't Use Large Mini-Batches, Use Local SGD, arXiv:1808.07217"
+ }
+]

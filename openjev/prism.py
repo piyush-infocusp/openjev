@@ -107,7 +107,7 @@ def layout(ids: list[int], readouts: list[dict], opt_id: int, flag_id: int):
 
 
 def prism_collate(tokenizer, records: list[Record], max_state_tokens: int = 2048,
-                  pad_to_multiple_of: int = 8, pack_len: int = 0) -> PrismBatch:
+                  pad_to_multiple_of: int = 8, pack_len: int = 0, rows_of=None) -> PrismBatch:
     """Encode `records` into one PrismBatch.
 
     pack_len = 0: one request per row (right-padded). pack_len > 0 (OJ-060): requests are
@@ -115,13 +115,20 @@ def prism_collate(tokenizer, records: list[Record], max_state_tokens: int = 2048
     gets its own row). Inside a row each request keeps its own layout and positions that
     restart at 0, and `doc` (its index in the row) makes the mask block-diagonal, so the
     flag logits equal the unpacked ones. Either way flag_index, groups, labels and schemas
-    follow the order of `records`, so the logits come out in the same order."""
+    follow the order of `records`, so the logits come out in the same order.
+
+    rows_of: a precomputed row assignment (tools/freeze_packed.py layout for this micro-batch);
+    must partition range(len(records)); replaces pack_rows."""
     enc = [encode(tokenizer, r.state, r.schema, max_state_tokens) for r in records]
     opt_id = tokenizer.convert_tokens_to_ids(OPT)
     flag_id = tokenizer.convert_tokens_to_ids(FLAG)
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
     lens = [len(e.input_ids) for e in enc]
-    if pack_len:
+    if rows_of is not None:
+        rows_of = [list(r) for r in rows_of]
+        if sorted(i for r in rows_of for i in r) != list(range(len(enc))):
+            raise ValueError("rows_of must partition the records")
+    elif pack_len:
         from .packing import pack_rows
         rows_of = pack_rows(lens, pack_len)
     else:
@@ -300,6 +307,68 @@ def convert_inplace(module: nn.Module, dtype, skip_trainable: bool = True) -> nn
     return module
 
 
+# OJ-075: quantized frozen base weights (bitsandbytes, QLoRA-style). Only the projections that
+# LoRA wraps, inside the decoder layers, are quantized: never the embedding, the PLE table and
+# its projections, or the flag head.
+QUANTS = ("none", "int8", "nf4")
+QUANT_TARGETS = ("q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj")
+INT8_THRESHOLD = 6.0   # LLM.int8() outlier threshold (Dettmers et al. 2022); 0.0 = pure int8
+BNB_PIN = "bitsandbytes==0.50.2"
+
+
+def quant_targets(text: nn.Module) -> list[str]:
+    """Names (relative to `text`) of the modules quantize_linears replaces: exact nn.Linear
+    under the decoder `layers` whose leaf name is a LoRA target."""
+    return [n for n, m in text.named_modules()
+            if type(m) is nn.Linear and n.startswith("layers.")
+            and n.rsplit(".", 1)[-1] in QUANT_TARGETS]
+
+
+def quantize_linears(text: nn.Module, quant: str, device, compute_dtype=torch.float16) -> list[str]:
+    """Replace quant_targets(text) with bitsandbytes layers (int8: Linear8bitLt, LLM.int8();
+    nf4: Linear4bit, no double quant). Each layer is quantized straight onto `device`, one
+    tensor at a time: its weight is cast to compute_dtype on the host (nf4's quant_state keeps
+    that dtype; on a T4 bnb's fast path needs fp16), then moved, so host RAM peaks at one
+    tensor. The shells are built on 'meta', so no RNG is used and the LoRA / flag head init
+    stays equal to quant=none. Sets text.is_loaded_in_8bit / _4bit so PEFT wraps them with its
+    bnb LoRA layers. Call before the LoRA wrap. Returns the replaced names."""
+    if quant == "none":
+        return []
+    if quant not in QUANTS:
+        raise ValueError(f"quant {quant!r} not in {QUANTS}")
+    try:
+        import bitsandbytes as bnb
+    except ImportError as e:
+        raise ImportError(f"quant={quant} needs bitsandbytes (pip install {BNB_PIN})") from e
+    names = quant_targets(text)
+    with torch.no_grad():
+        for name in names:
+            old = text.get_submodule(name)
+            src = old.weight.data.to("cpu", dtype=compute_dtype)   # Int8Params quantizes from CPU
+            bias = old.bias is not None
+            if quant == "nf4":
+                new = bnb.nn.Linear4bit(old.in_features, old.out_features, bias=bias,
+                                        compute_dtype=compute_dtype, compress_statistics=False,
+                                        quant_type="nf4", device="meta")
+                new.weight = bnb.nn.Params4bit(src, requires_grad=False, compress_statistics=False,
+                                               quant_type="nf4", module=new)
+            else:
+                new = bnb.nn.Linear8bitLt(old.in_features, old.out_features, bias=bias,
+                                          has_fp16_weights=False, threshold=INT8_THRESHOLD,
+                                          device="meta")
+                new.weight = bnb.nn.Int8Params(src, requires_grad=False, has_fp16_weights=False)
+            if bias:
+                new.bias = nn.Parameter(old.bias.data.to("cpu", dtype=compute_dtype),
+                                        requires_grad=False)
+            new = new.to(device)                  # quantizes the weight on `device`
+            parent, attr = name.rsplit(".", 1)
+            setattr(text.get_submodule(parent), attr, new)
+            del old, src
+    text.is_loaded_in_8bit = quant == "int8"   # PEFT dispatch (peft.tuners.lora.bnb)
+    text.is_loaded_in_4bit = quant == "nf4"
+    return names
+
+
 class PrismOpenJev(nn.Module):
     """OpenJev flag head on a Gemma 4 text decoder with the Prism mask."""
 
@@ -319,7 +388,7 @@ class PrismOpenJev(nn.Module):
         return self.backbone.resize_token_embeddings(n, mean_resizing=False)
 
     def get_per_layer_input_embeddings(self):
-        f = getattr(self.backbone, "get_per_layer_input_embeddings", None)
+        f = getattr(self._text_backbone(), "get_per_layer_input_embeddings", None)
         return f() if f else None
 
     def masks(self, b: PrismBatch):
@@ -368,9 +437,13 @@ class PrismOpenJev(nn.Module):
         text = self._text_backbone()
         v_ple = getattr(text.config, "vocab_size_per_layer_input", None)
         if v_ple and hasattr(text, "get_per_layer_inputs"):
-            # The template tokens are added after Gemma's vocabulary, but the
-            # Per-Layer Embedding table keeps its size. Those tokens get the
-            # pad token's PLE row; their main embedding is their own.
+            # Gemma 4 E2B/E4B have no spare rows (vocab == tokenizer size), so adding
+            # the template tokens resizes the Per-Layer Embedding table too and grows
+            # vocab_size_per_layer_input with it (transformers 5.x). The guard below
+            # then never fires: each template token reads its OWN PLE row, frozen at
+            # its fresh-build value (add_special_tokens: mean + seeded noise), saved in
+            # ple_rows.pt and pasted back by train_prism.build on --init / reload.
+            # Only a backbone whose PLE table did not grow maps ids past it to pad.
             pad = text.config.pad_token_id or 0
             ple_ids = torch.where(ids >= v_ple, torch.full_like(ids, pad), ids)
             ple_dev = text.embed_tokens_per_layer.weight.device
@@ -380,3 +453,42 @@ class PrismOpenJev(nn.Module):
                            use_cache=False).last_hidden_state.float()
         idx = b.flag_index
         return self.flag_head(hs[idx[:, 0], idx[:, 1]]).squeeze(-1)
+
+    def forward(self, b: PrismBatch) -> torch.Tensor:
+        """= flag_logits. DistributedDataParallel calls forward (train_prism under torchrun)."""
+        return self.flag_logits(b)
+
+
+# ---------------------------------------------------------------- template PLE rows
+
+PLE_ROWS = "ple_rows.pt"   # {str(token id): PLE row} of the template tokens, in a checkpoint
+
+
+def template_ple_rows(model: PrismOpenJev, ids: list[int]) -> dict | None:
+    """{str(id): row} of the template tokens' Gemma 4 PLE rows, in the table's dtype (exact),
+    or None when there is no PLE table or it does not reach the template ids (then
+    flag_logits maps them to pad, nothing to save). The rows are frozen, so their value is
+    whatever add_special_tokens drew on the fresh SFT build (mean + seeded noise)."""
+    ple = model.get_per_layer_input_embeddings()
+    if ple is None or max(ids) >= ple.weight.shape[0]:
+        return None
+    w = ple.weight
+    return {str(i): w[i].detach().cpu().clone() for i in ids}
+
+
+def paste_ple_rows(model: PrismOpenJev, rows: dict, where: str = "") -> None:
+    """Write saved template PLE rows back into the (resized) table, in its dtype and on its
+    device. Raises on a missing table or a shape mismatch (e.g. an E4B checkpoint on E2B)."""
+    ple = model.get_per_layer_input_embeddings()
+    if ple is None:
+        raise ValueError(f"{where}: {PLE_ROWS} present but the backbone has no PLE table")
+    w = ple.weight
+    ids = [int(i) for i in rows]
+    if max(ids) >= w.shape[0]:
+        raise ValueError(f"{where}: {PLE_ROWS} id {max(ids)} >= PLE table rows {w.shape[0]}")
+    v = torch.stack([rows[str(i)] for i in ids])
+    if v.shape[1:] != w.shape[1:]:
+        raise ValueError(f"{where}: {PLE_ROWS} row shape {tuple(v.shape[1:])} != "
+                         f"PLE table {tuple(w.shape[1:])}")
+    with torch.no_grad():
+        w[torch.tensor(ids, device=w.device)] = v.to(w.device, w.dtype)

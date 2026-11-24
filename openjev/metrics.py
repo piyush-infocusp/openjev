@@ -8,6 +8,7 @@ score. `Accumulator` collects these and turns them into a summary table.
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 
 import torch
@@ -33,6 +34,49 @@ def ece_from_conf(conf: list[float], correct: list[float], bins: int = 15) -> fl
         avg_acc = sum(correct[i] for i in idx) / m
         out += (m / n) * abs(avg_acc - avg_conf)
     return out
+
+
+def prob_metrics(items, bins: int = 15) -> dict:
+    """One row of the eval table from (probs, target) pairs: n, acc with a 2-SE interval
+    (SE = sqrt(acc (1 - acc) / n), clipped to [0, 1]), nll, Brier (sum over the options,
+    as in Accumulator) and equal-mass `bins`-bin ECE of the top probability. The same
+    definition is used in train_prism.evaluate, eval_prism.py and calibrate.py."""
+    conf, ok, nll, brier = [], [], [], []
+    for p, t in items:
+        p = torch.as_tensor(p).detach().double().reshape(-1)   # fp64: no fp32 ties in argmax
+        c, top = p.max(0)
+        conf.append(c.item())
+        ok.append(float(top.item() == t))
+        nll.append(-math.log(max(p[t].item(), 1e-12)))
+        brier.append(((p ** 2).sum() - 2 * p[t] + 1).item())
+    n = len(ok)
+    if n == 0:
+        return {"n": 0, "acc": 0.0, "acc_se2": 0.0, "acc_lo": 0.0, "acc_hi": 0.0,
+                "nll": 0.0, "brier": 0.0, "ece": 0.0}
+    acc = sum(ok) / n
+    se2 = 2 * math.sqrt(acc * (1 - acc) / n)
+    return {"n": n, "acc": acc, "acc_se2": se2, "acc_lo": max(0.0, acc - se2),
+            "acc_hi": min(1.0, acc + se2), "nll": sum(nll) / n, "brier": sum(brier) / n,
+            "ece": ece_from_conf(conf, ok, bins=bins)}
+
+
+def _rounded(row: dict, nd: int | None) -> dict:
+    if nd is None:
+        return row
+    return {k: round(v, nd) if isinstance(v, float) else v for k, v in row.items()}
+
+
+def source_metrics(items, bins: int = 15, nd: int | None = None) -> dict:
+    """items: (probs, target, source) per labelled question. Returns
+    {"overall": row, "sources": {source: row}} (rows from prob_metrics; floats rounded to
+    `nd` digits if given). The overall row runs over the items grouped by source in order
+    of first appearance (the order train_prism.evaluate always used)."""
+    by: dict = {}
+    for p, t, s in items:
+        by.setdefault(s, []).append((p, t))
+    flat = [x for v in by.values() for x in v]
+    return {"overall": _rounded(prob_metrics(flat, bins), nd),
+            "sources": {s: _rounded(prob_metrics(v, bins), nd) for s, v in by.items()}}
 
 
 class Accumulator:

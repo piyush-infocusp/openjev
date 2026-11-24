@@ -1,0 +1,30 @@
+[
+ {
+  "length_stage": 512,
+  "stage_pack_mult": 0,
+  "_idea": "length curriculum stage <=512 (55.2% of curriculum steps): length-bucketed, unpacked mb 8 (== packed at pack_len 512: every record > 512//2 is alone in its row)",
+  "_hypothesis": "no cross-request attention blocks (no varlen kernel on T4) and little padding inside a bucket",
+  "_reference": "Li, Zhang, He 2022, arXiv:2108.06084 (sequence length warmup); Krell et al. 2021, arXiv:2107.02027 (packing)"
+ },
+ {
+  "length_stage": 1024,
+  "stage_pack_mult": 0,
+  "_idea": "length curriculum stage <=1024 (19.7% of curriculum steps): length-bucketed, unpacked mb 8 (== packed at pack_len 1024: every record > 1024//2 is alone in its row)",
+  "_hypothesis": "no cross-request attention blocks (no varlen kernel on T4) and little padding inside a bucket",
+  "_reference": "Li, Zhang, He 2022, arXiv:2108.06084 (sequence length warmup); Krell et al. 2021, arXiv:2107.02027 (packing)"
+ },
+ {
+  "length_stage": 512,
+  "stage_pack_mult": 2,
+  "_idea": "length curriculum stage <=512 (55.2% of steps): packed at pack_len 1024 (2x stage max)",
+  "_hypothesis": "half the rows, same tokens, but dense attention over 2x longer rows; compare with the m0 twin",
+  "_reference": "Li, Zhang, He 2022, arXiv:2108.06084 (sequence length warmup); Krell et al. 2021, arXiv:2107.02027 (packing)"
+ },
+ {
+  "length_stage": 1024,
+  "stage_pack_mult": 2,
+  "_idea": "length curriculum stage <=1024 (19.7% of steps): packed at pack_len 2048 (2x stage max)",
+  "_hypothesis": "half the rows, same tokens, but dense attention over 2x longer rows; compare with the m0 twin",
+  "_reference": "Li, Zhang, He 2022, arXiv:2108.06084 (sequence length warmup); Krell et al. 2021, arXiv:2107.02027 (packing)"
+ }
+]

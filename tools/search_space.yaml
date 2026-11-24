@@ -31,12 +31,15 @@
 # numbers (one optimizer step per micro-batch of a sampled bs) are not comparable.
 # Round 4: baseline ple_cpu=1 (r3small: ple_cpu=0 and chunked_math+ckpt off ran out of memory
 # at mb 8; ple_cpu=1 was the only config that fit), so the quality guard has a baseline.
-round: 4
+# Round 7 (study openjev-speed-v3): the fixed multi-length bench set replaces the single
+# trial stream + pack_len (user decision 2026-11-23); numbers are not comparable with v2.
+round: 9
 
 # Optuna study in runs/optuna/study.db. Round 3 starts a NEW study so the dashboard,
 # the importances and TPE only see fair trials (fixed micro-batch, global batch, trial
 # data, mask and dtype). The legacy study "openjev-speed" (rounds 1-2) stays untouched.
-study_name: openjev-speed-v2
+# Round 7 starts openjev-speed-v3 in the same study.db (v2 keeps rounds 3-6 for history).
+study_name: openjev-speed-v3
 
 # ---------------------------------------------------------------- study settings (constants)
 # Not sampled. propose writes them into every trials.json entry; bench_trials applies them.
@@ -47,8 +50,13 @@ study_name: openjev-speed-v2
 global_batch: 32
 micro_batch: 8
 warmup_steps: 1        # optimizer steps before the quality guard (same for every trial)
-timed_steps: 2         # optimizer steps in the timed loop: every trial times the same records (r3: 4 -> 2, small rounds)
-diag_mb: 16            # round baseline only: one fwd+bwd at this micro-batch, recorded, never used
+timed_steps: 1         # optimizer steps in the timed loop; with bench_set: PER BUCKET (r7: 1, the ~3 min budget)
+diag_mb: null          # r3-r6: 16 (baseline only, recorded, never used); not run on the bench set
+# v3+: the FIXED multi-length bench set (tools/length_curriculum.py bench --max-state 2048):
+# 32 uncut train records per bucket <=128/256/512/1024/2048 + bucket weights (share of training
+# steps). Every trial times every bucket; objective = weighted samples/s. Replaces the trial
+# stream and the packing / pack_len trial condition (both stay train_prism flags).
+bench_set: runs/optuna/bench_lengths.json
 # Frozen data (tools/optuna_loop.py freeze): the same record ids for every trial.
 trial_stream_len: 640  # >= (warmup_steps + timed_steps) * global_batch, with margin
 probe_n: 8             # fixed probe set for the quality guard (one per source, then round robin)
@@ -185,9 +193,10 @@ dimensions:
   - name: packing
     type: categorical
     choices: ["off", "on"]
-    default: "off"
+    default: "on"
     requires_reload: false
     implemented: true
+    sample: false   # frozen data condition (user decision 2026-11-20): packing is exact, so it is a data layout
     idea: >-
       OJ-060. Hierarchical packing of each micro-batch (source mix -> length bucket ->
       first-fit-decreasing rows <= pack_len) with a doc-id block-diagonal mask, positions
@@ -198,24 +207,94 @@ dimensions:
   - name: pack_len
     type: categorical
     choices: [1024, 2048]
-    default: 2048
+    default: 1024   # r5 measured 1024 best
     requires_reload: false
     implemented: true
+    sample: false   # frozen with packing: runs/optuna/packed_layout.json (tools/freeze_packed.py)
     idea: >-
       OJ-060. Row length for packing (used only when packing is on; a longer request gets a
       row of its own). train_prism --pack-len.
 
-  # ------------------------------------------------------------ planned (not sampled yet)
+  - name: quant
+    type: categorical
+    # 8bit -> int8 before it was ever implemented or enqueued, so no trial carries the old choice.
+    choices: ["none", "int8", "nf4"]
+    default: "none"
+    requires_reload: true
+    implemented: true
+    sample: false
+    idea: >-
+      OJ-075. bitsandbytes int8 (LLM.int8(), threshold 6.0) or nf4 (QLoRA 4-bit, no double
+      quant, fp16 compute) for the LoRA-target projections of the decoder layers; LoRA, flag
+      head, embeddings and the PLE table stay unquantized. Frees ~1.7 (int8) or ~2.5 GB (nf4), so
+      grad_ckpt off may fit at mb 8 (no recompute), but dequantization costs time. Enqueue
+      only. train_prism --quant. Dettmers et al. 2023, arXiv:2305.14314; 2022, arXiv:2208.07339.
+
+  - name: length_stage
+    type: categorical
+    choices: [0, 128, 256, 512, 1024, 2048]
+    default: 0
+    requires_reload: false
+    implemented: true
+    sample: false
+    idea: >-
+      Length curriculum (user idea). 0 = off (the normal trial stream). N = time the frozen
+      stage-N stream (bench_trials --stage-streams, tools/length_curriculum.py freeze): records
+      whose encoded length is in that bucket, never cut. Overrides packing/pack_len with
+      stage_pack_mult. Stage trials are NOT comparable with the main study (shorter records are
+      faster): run them in their own study (propose --study openjev-length-v1) and compare
+      only within a stage. train_prism --length-curriculum. Li et al. 2022, arXiv:2108.06084.
+
+  - name: stage_pack_mult
+    type: categorical
+    choices: [0, 1, 2]
+    default: 1
+    requires_reload: false
+    implemented: true
+    sample: false
+    idea: >-
+      Length curriculum, only with length_stage > 0: pack_len = stage_pack_mult x stage max.
+      0 = unpacked, length-bucketed micro-batches padded to their longest request (no
+      cross-request attention blocks; T4 has no varlen kernel). train_prism
+      --curriculum-pack-mult (0 = --packing off).
 
   - name: ddp
     type: categorical
     choices: ["off", "on"]
     default: "off"
     requires_reload: true
-    implemented: false
+    implemented: true
+    sample: false
     idea: >-
-      OJ-062. One process per T4 with torchrun (needs a torchrun launch, so a reload).
+      OJ-062. Data parallel over every GPU (2xT4): bench_trials hands ddp=on trials to one
+      torchrun launch; each rank runs a token-balanced share of the same global batch (same
+      records as a 1-GPU trial), so samples/s compares directly. Enqueue only.
       Li et al. 2020, arXiv:2006.15704.
+
+  - name: sync_mode
+    type: categorical
+    choices: [ddp, local_sgd]
+    default: ddp
+    requires_reload: false
+    implemented: true
+    sample: false
+    idea: >-
+      OJ-062, ddp=on only. ddp: one gradient all-reduce per optimizer step (no_sync on the
+      other micro-steps). local_sgd: no gradient all-reduce, each GPU steps its own AdamW and
+      the LoRA / flag-head weights are averaged every sync_every steps (and before each probe).
+      Lin et al. 2020 (ICLR), arXiv:1808.07217; Stich 2019, arXiv:1805.09767.
+
+  - name: sync_every
+    type: categorical
+    choices: [1, 10, 50, 200]
+    default: 50
+    requires_reload: false
+    implemented: true
+    sample: false
+    idea: >-
+      OJ-062, sync_mode=local_sgd only: optimizer steps between weight averages (K).
+
+  # ------------------------------------------------------------ planned (not sampled yet)
 
   - name: fp16_compress_hook
     type: categorical
@@ -234,25 +313,26 @@ dimensions:
     implemented: false
     idea: OJ-078b. DDP gradient bucket size; set at DDP wrap time. DDP docs.
 
-  - name: quant
-    type: categorical
-    choices: [none, 8bit, nf4]
-    default: none
-    requires_reload: true
-    implemented: false
-    idea: >-
-      OJ-075. bitsandbytes 8-bit or 4-bit nf4 base weights (QLoRA). Less memory, but
-      dequantization costs time. Dettmers et al. 2023, arXiv:2305.14314; 2022, arXiv:2208.07339.
 
+  # choices were ["off", "on"] while unimplemented; never sampled or enqueued, so no trial
+  # carries the old space (like quant 8bit -> int8).
   - name: torch_compile
     type: categorical
-    choices: ["off", "on"]
+    choices: ["off", "default", "reduce-overhead"]
     default: "off"
     requires_reload: false
-    implemented: false
+    implemented: true
+    sample: false   # enqueue only (r8: off vs default vs reduce-overhead on the best r7 config)
     idea: >-
-      OJ-079. torch.compile(mode=default) with PEFT + float mask; keep only if stable.
-      Ansel et al. 2024 (PyTorch 2), ASPLOS.
+      OJ-079. torch.compile of the decoder layers only (openjev/compile.py: per-layer
+      nn.Module.compile, dynamic=True, recompile limit 64, a hit = unsupported). PLE (CPU),
+      Prism masks, flag head, loss, GradScaler, DDP stay eager; HF grad checkpointing wraps
+      the compiled call; LoRA (PEFT) inside. default = Inductor kernel fusion (T4 profile: mul
+      15%, copy_ 12.5% are fusable); reduce-overhead = + CUDA graphs (one recording per
+      shape). Bench records compile_s / compile_graphs / compile_recompiles apart from the
+      timed numbers (pre-pass before loss_start). Inductor/Triton failures (T4 64 KB smem:
+      flex failed with "No valid triton configs") = unsupported. Ansel et al. 2024 (PyTorch 2),
+      ASPLOS: https://pytorch.org/assets/pytorch2-2.pdf
 
   - name: dataloader_workers
     type: categorical

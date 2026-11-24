@@ -55,6 +55,7 @@ def space(tmp_path, small=True, name="space", **kw):
     # The mechanics tests were written against round 3 (ple_cpu default 0); pin that here so
     # a later round's defaults (r4: ple_cpu 1) do not change them. kw can still override.
     raw["round"] = 3
+    raw.pop("bench_set", None)     # v3's bench set: tests/test_bench_lengths.py passes its own
     for d in raw["dimensions"]:
         if d["name"] == "ple_cpu":
             d["default"] = 0
@@ -254,14 +255,14 @@ def test_skipped_warmup_step_is_redone(tmp_path, tok, monkeypatch):
     clean = trial()
     real, calls = bt.accum_step, []
 
-    def skip_first(model_, opt, scaler, next_batch, accum, device, backend):
+    def skip_first(model_, opt, scaler, batches, accum, device, backend, dp=None):
         calls.append(1)
         if len(calls) == 1:                    # a skipped step: data consumed, no update
-            for _ in range(accum):
-                next_batch()
+            for _ in batches:
+                pass
             opt.zero_grad(set_to_none=True)
             return torch.tensor(0.0), 1
-        return real(model_, opt, scaler, next_batch, accum, device, backend)
+        return real(model_, opt, scaler, batches, accum, device, backend, dp)
     monkeypatch.setattr(bt, "accum_step", skip_first)
     r = trial()
     assert clean["warmup_retries"] == 0 and r["warmup_retries"] == 1
@@ -282,6 +283,7 @@ def test_oom_at_fixed_mb_is_pruned_not_retried(tmp_path, tok, monkeypatch):
     t = json.loads(tj.read_text())
     for e in t:
         e["params"]["dtype"] = "fp32"
+        e["params"]["packing"] = "off"   # rows == records below (explicit; packing is off by default)
     tj.write_text(json.dumps(t))
     sizes = []
     real_build = bt.tp.build
@@ -350,10 +352,14 @@ def test_report_importances_and_guard(tmp_path):
     impl = ol.implemented(space_)
     assert {d["name"] for d in impl} == {"bs", "grad_ckpt", "max_state_tokens", "torch_threads",
                                          "sdpa_backend", "ple_cpu", "attn_backend", "profile",
-                                         "dtype", "option_subsample_k", "packing", "pack_len"}
+                                         "dtype", "option_subsample_k", "packing", "pack_len", "quant",
+                                         "ddp", "sync_mode", "sync_every", "length_stage", "stage_pack_mult",
+                                         "torch_compile"}
     assert [d["name"] for d in impl if not d["sample"]] == ["bs", "max_state_tokens", "ple_cpu", "dtype", "profile",
-                                                            "option_subsample_k"]
-    assert all(not d["implemented"] for d in space_ if d["name"] in ("quant", "ddp", "torch_compile"))
+                                                            "option_subsample_k", "packing", "pack_len", "quant",
+                                                            "length_stage", "stage_pack_mult",
+                                                            "ddp", "sync_mode", "sync_every", "torch_compile"]
+    assert all(not d["implemented"] for d in space_ if d["name"] in ("fp16_compress_hook",))
     import bench_trials as bt
     assert {d["name"] for d in impl} <= bt.TRIAL_PARAMS | bt.RELOAD_PARAMS   # every dim has a handler
     trials = tmp_path / "t.json"
@@ -378,7 +384,7 @@ def test_report_importances_and_guard(tmp_path):
     ol.main(g + ["report", "--out", str(out)])
     text = out.read_text()
     assert "## Parameter importances" in text and "| torch_threads |" in text
-    assert "Ideas not implemented yet" in text and "`quant`" in text
+    assert "Ideas not implemented yet" in text and "`dataloader_workers`" in text
 
 
 def test_round2_enqueue_profile_and_backends(tmp_path, tok):
@@ -492,7 +498,7 @@ def test_round1_study_still_works(tmp_path):
     out.write_text("old\n<!-- manual: kept by report -->\n\n## My notes\nkeep me\n")
     ol.main(g + ["report", "--out", str(out)])
     text = out.read_text()
-    assert "| ple_cpu | attn_backend | profile | option_subsample_k | packing | pack_len | samples/s |" in text
+    assert "| ple_cpu | attn_backend | profile | option_subsample_k | packing | pack_len | quant | length_stage | stage_pack_mult | ddp | sync_mode | sync_every | torch_compile | samples/s |" in text
     assert "| 0 | complete (base r1) |" in text and "| 3 | complete (base r3) |" in text
     assert "## Profiles" not in text and text.rstrip().endswith("keep me") and text.startswith("# OpenJev")
 
@@ -536,7 +542,7 @@ def test_fixed_conditions(tmp_path, tok):
     note = get_note(study)
     assert "### Fixed conditions" in note and "FIXED micro-batch 8 and global batch 32" in note
     assert "infeasible_at_mb8" in note and ol.LEGACY_STUDY in note
-    assert study.study_name == yaml.safe_load(REAL_YAML.read_text())["study_name"] == "openjev-speed-v2"
+    assert study.study_name == yaml.safe_load(REAL_YAML.read_text())["study_name"] == "openjev-speed-v3"
     # The facts the block states.
     args = tp.parse([])
     assert (args.lora_r, args.lora_alpha, tp.LORA_TARGETS) == (ol.LORA["r"], ol.LORA["alpha"], ol.LORA["targets"])
@@ -664,7 +670,7 @@ def test_self_describing_trials(tmp_path):
     assert before == [(t.number, t.state, t.params) for t in s2.trials]
     # BACKFILL is for the legacy study only: a v2 trial keeps its round and gets no r1 caveat.
     assert s2.trials[0].user_attrs["round"] == 3 and "OLD Prism mask" not in get_note(ol.handle(s2, s2.trials[0]))
-    assert s2.trials[2].user_attrs["source"] == "tpe" and s2.study_name == "openjev-speed-v2"
+    assert s2.trials[2].user_attrs["source"] == "tpe" and s2.study_name == "openjev-speed-v3"
     assert ol.LEGACY_STUDY in get_note(s2)
 
     ol.main(g + ["annotate", "--trial", "2", "--idea", "manual", "--reference", "r"])

@@ -4,6 +4,11 @@ temperatures.
 
     python eval.py --ckpt checkpoints/run/final --test "data/*.test.jsonl" --out out_dir [--baseline]
 
+--ckpt may be an old OpenJev checkpoint (openjev_config.json) or a train_prism.py
+checkpoint (prism_config.json: base model + LoRA adapter + flag head + template delta,
+loaded through eval_prism.load_prism; CUDA if available unless --cpu). For the Objective A
+final eval (2-SE intervals, per-source subsets, per-item dumps) use eval_prism.py.
+
 --baseline adds, for each source, a TF-IDF + LogisticRegression baseline for
 choice questions whose option set is fixed across the source (e.g. banking77,
 clinc150 intents). It trains on `<prefix>.train.jsonl` next to the test file
@@ -32,8 +37,10 @@ def parse_args(argv=None):
     ap.add_argument("--out", required=True)
     ap.add_argument("--baseline", action="store_true")
     ap.add_argument("--bs", type=int, default=16)
-    ap.add_argument("--max-state-tokens", type=int, default=1024)
+    ap.add_argument("--max-state-tokens", type=int, default=None,
+                    help="default: a Prism checkpoint's training value, else 1024")
     ap.add_argument("--max", type=int, default=None)
+    ap.add_argument("--cpu", action="store_true", help="Prism checkpoints: stay on CPU")
     return ap.parse_args(argv)
 
 
@@ -151,9 +158,6 @@ def main(argv=None):
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    model, tok, config = checkpoint.load(args.ckpt)
-    temperatures = config.get("temperatures")
-
     test_paths = _expand(args.test)
     records = []
     for p in test_paths:
@@ -161,8 +165,22 @@ def main(argv=None):
     if args.max:
         records = records[:args.max]
 
-    by_type = checkpoint.collect_logits(model, tok, records, bs=args.bs,
-                                         max_state_tokens=args.max_state_tokens)
+    import eval_prism
+    if eval_prism.is_prism(args.ckpt):
+        eval_prism.single_process_only()
+        device = "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
+        model, tok, margs = eval_prism.load_prism(args.ckpt, device)
+        config = json.loads((Path(args.ckpt) / "prism_config.json").read_text())
+        items = eval_prism.collect(model, tok, records,
+                                   args.max_state_tokens or margs.max_state_tokens, device, args.bs)
+        by_type = {"noul": [], "choice": [], "score": []}
+        for it in items:
+            by_type[it["type"]].append((torch.tensor(it["logits"]), it["target"], it["source"]))
+    else:
+        model, tok, config = checkpoint.load(args.ckpt)
+        by_type = checkpoint.collect_logits(model, tok, records, bs=args.bs,
+                                             max_state_tokens=args.max_state_tokens or 1024)
+    temperatures = config.get("temperatures")
 
     summary_raw = _summary_from_logits(by_type, None)
     summary_temp = _summary_from_logits(by_type, temperatures)

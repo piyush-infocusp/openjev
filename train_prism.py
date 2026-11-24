@@ -23,12 +23,30 @@ Two stages, same script:
                RL does not push every answer to probability 1.
      Plus --lam-cal * soft ECE (openjev.rlcd) and --lam-kl * KL(p || p_ref).
 
-The reference model for KL is the same backbone with the LoRA adapter turned
-off (or the SFT adapter frozen), so it costs no extra GPU memory.
+The reference policy for KL: with --init (RL from SFT) a FROZEN copy of every trainable
+tensor as loaded from --init (SFT LoRA, flag head, template delta), swapped in under no_grad
+for the reference forward (FrozenRef; a few hundred MB at most). Without --init: the backbone
+with the LoRA adapter turned off.
+
+Sessions (openjev/resume.py): --save-every N writes <save-dir>/resume/step_* every N steps
+(trainables, optimizer, scheduler, GradScaler, data-stream position, RNG, step, best nll);
+--max-minutes stops cleanly (resume checkpoint + last/, exit 0); --resume auto continues from
+the latest one, and a finished stage (DONE.json) exits at once. Under DDP rank 0 writes and
+every rank loads.
 
 Example (Kaggle T4, fp16):
   python train_prism.py --algo sft  --steps 3000 --save-dir ckpt/sft
   python train_prism.py --algo exact --reward brier --init ckpt/sft --steps 1000 --save-dir ckpt/rl
+
+Two GPUs (OJ-062): the same flags under torchrun, one process per GPU:
+  python -m torch.distributed.run --standalone --nproc_per_node 2 train_prism.py ...
+--grad-accum stays the GLOBAL number of micro-batches per optimizer step (it must divide by
+the number of ranks), so the global batch, the records of each step and the lr schedule do
+not change. Every rank reads the same stream and runs a token-balanced share of whole
+micro-batches (openjev/dist.py). --sync-mode ddp (default): one gradient all-reduce per
+step (no_sync on the other micro-steps). --sync-mode local_sgd --sync-every K: no gradient
+all-reduce, the trainable weights are averaged every K steps (and before every eval/save).
+Models load one rank at a time (host RAM); eval, save, log and TensorBoard run on rank 0.
 """
 
 from __future__ import annotations
@@ -39,6 +57,7 @@ import json
 import math
 import random
 import time
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -46,6 +65,8 @@ import torch
 import torch.nn.functional as F
 
 from openjev import add_special_tokens, target_index
+from openjev import dist as jdist
+from openjev import resume as rs
 from openjev.data import read_jsonl, subsample_options
 from openjev.mix import Mixture
 from openjev.prism import PrismOpenJev, gemma_text_backbone, log_rss, prism_collate
@@ -93,25 +114,142 @@ def parse(argv=None):
     ap.add_argument("--packing", default="off", choices=["off", "on"],
                     help="training only: pack each micro-batch into rows of <= --pack-len tokens, "
                          "doc-id block-diagonal mask, positions restart per request (OJ-060)")
-    ap.add_argument("--pack-len", type=int, default=2048, help="row length with --packing on")
+    ap.add_argument("--pack-len", type=int, default=1024, help="row length with --packing on")
+    ap.add_argument("--quant", default="none", choices=["none", "int8", "nf4"],
+                    help="bitsandbytes base weights for the LoRA-target projections of the decoder "
+                         "layers (int8 = LLM.int8(), nf4 = QLoRA 4-bit); LoRA, flag head, "
+                         "embeddings and PLE stay unquantized (OJ-075)")
+    ap.add_argument("--sync-mode", default="ddp", choices=list(jdist.SYNC_MODES),
+                    help="under torchrun with >1 process: ddp = gradient all-reduce every step; "
+                         "local_sgd = average the trainable weights every --sync-every steps (OJ-062)")
+    ap.add_argument("--sync-every", type=int, default=50, help="local_sgd: steps between weight averages")
+    ap.add_argument("--length-curriculum", default="off", choices=["off", "on"],
+                    help="training only: short requests first. The run's steps x global-batch records "
+                         "(drawn like the Mixture) are bucketed by encoded length into "
+                         "--curriculum-stages, never cut; one epoch = every record once, stages in "
+                         "increasing length (openjev.packing.CurriculumStream)")
+    ap.add_argument("--curriculum-stages", default="128,256,512,1024,2048",
+                    help="stage upper bounds in tokens; longer requests train in the last stage")
+    ap.add_argument("--length-grouping", default=None, choices=["off", "on"],
+                    help="training only (default on; off with --length-curriculum on, which already "
+                         "groups by length): length-grouped micro-batches in a random order. "
+                         "--group-chunk x --bs records of the Mixture are sorted by encoded length, "
+                         "cut into micro-batches of --bs, and the micro-batch order is shuffled "
+                         "(seeded; same on every DDP rank). Not a curriculum (openjev.packing."
+                         "LengthGroupedStream)")
+    ap.add_argument("--group-chunk", type=int, default=50,
+                    help="--length-grouping: micro-batches per sorted mega-chunk")
+    ap.add_argument("--torch-compile", default="off", choices=["off", "default", "reduce-overhead"],
+                    help="torch.compile the decoder layers only (OJ-079; openjev/compile.py): "
+                         "dynamic shapes, Inductor (default) or Inductor + CUDA graphs "
+                         "(reduce-overhead). PLE, masks, flag head and loss stay eager. A compile "
+                         "failure on the first micro-batch falls back to eager (logged)")
+    ap.add_argument("--curriculum-pack-mult", type=int, default=1,
+                    help="with --length-curriculum on and --packing on: pack_len = this x the "
+                         "stage max of the micro-batch (replaces --pack-len)")
+    # Resumable sessions (openjev/resume.py).
+    ap.add_argument("--resume", default="off",
+                    help="off | auto (latest <save-dir>/resume/step_*, fresh start if none; exit at "
+                         "once if <save-dir>/DONE.json exists) | a resume checkpoint dir")
+    ap.add_argument("--resume-ignore-config", action="store_true",
+                    help="resume even if the trajectory config differs (prints the diff)")
+    ap.add_argument("--max-minutes", type=float, default=0,
+                    help="stop cleanly (resume checkpoint + last/, exit 0) once this many minutes have "
+                         "passed since main() started, model load included (0 = no limit)")
+    ap.add_argument("--save-every", type=int, default=100,
+                    help="write a resume checkpoint every N optimizer steps (0 = only at stop/end)")
+    ap.add_argument("--keep-resume", type=int, default=2, help="resume checkpoints to keep")
+    ap.add_argument("--session-steps", type=int, default=0,
+                    help="stop (like --max-minutes) after N optimizer steps in this session (tests)")
     args = ap.parse_args(argv)
+    if args.save_every < 0 or args.session_steps < 0 or args.max_minutes < 0:
+        ap.error("--save-every, --session-steps and --max-minutes must be >= 0")
     if args.option_subsample_k < 0:
         ap.error("--option-subsample-k must be >= 0")
     if args.pack_len <= 0:
         ap.error("--pack-len must be > 0")
+    if args.sync_every < 1:
+        ap.error("--sync-every must be >= 1")
     if args.packing == "on" and args.causal:
         ap.error("--causal ignores the doc mask and per-request positions; it cannot use --packing on")
+    if args.quant != "none" and args.lora_r == 0:
+        ap.error("--quant needs LoRA (--lora-r > 0): quantized base weights cannot train")
+    if args.length_grouping == "on" and args.length_curriculum == "on":
+        ap.error("--length-grouping on and --length-curriculum on exclude each other (the curriculum "
+                 "already groups by length)")
+    if args.length_grouping is None:
+        args.length_grouping = "off" if args.length_curriculum == "on" else "on"
+    if args.group_chunk < 1:
+        ap.error("--group-chunk must be >= 1")
+    if args.curriculum_pack_mult < 1:
+        ap.error("--curriculum-pack-mult must be >= 1 (unpacked: --packing off)")
+    if args.length_curriculum == "on":
+        from openjev.packing import parse_stages
+        try:
+            parse_stages(args.curriculum_stages)
+        except ValueError as e:
+            ap.error(str(e))
     return args
 
 
-def train_batch(tok, records, args, rng):
-    """One TRAINING micro-batch: option sub-sampling (--option-subsample-k, with `rng`)
-    and packing (--packing / --pack-len). Eval and the probe use prism_collate directly
-    (all options, unpacked)."""
-    if args.option_subsample_k:
-        records = [subsample_options(r, args.option_subsample_k, rng) for r in records]
+def subsample_all(records, args, rng):
+    """Option sub-sampling (--option-subsample-k) of training records. rng: a Random (one
+    shared stream) or a str key: then record i draws from Random(f"{key}:{i}:{id}"), so the
+    options of a record do not depend on which rank or micro-step collates it (DDP)."""
+    k = args.option_subsample_k
+    if not k:
+        return list(records)
+    if isinstance(rng, str):
+        return [subsample_options(r, k, random.Random(f"{rng}:{i}:{r.id}")) for i, r in enumerate(records)]
+    return [subsample_options(r, k, rng) for r in records]
+
+
+def collate_train(tok, records, args, pack_len=None):
+    """Training collate: packing (--packing / --pack-len; `pack_len` overrides --pack-len,
+    the length curriculum's per-stage row length); records already sub-sampled."""
     return prism_collate(tok, records, args.max_state_tokens,
-                         pack_len=args.pack_len if args.packing == "on" else 0)
+                         pack_len=(pack_len or args.pack_len) if args.packing == "on" else 0)
+
+
+def train_batch(tok, records, args, rng, pack_len=None):
+    """One TRAINING micro-batch: option sub-sampling (--option-subsample-k, with `rng`)
+    and packing (--packing / --pack-len; `pack_len` overrides --pack-len, the length
+    curriculum's per-stage row length). Eval and the probe use prism_collate directly
+    (all options, unpacked)."""
+    return collate_train(tok, subsample_all(records, args, rng), args, pack_len)
+
+
+def step_micro_batches(records, args, step: int, dp) -> list[tuple[int, list]]:
+    """The micro-batches of one optimizer step that this rank runs: (global index, records).
+    `records` = the whole step (bs x grad_accum). The cut into micro-batches is the
+    single-process one; dp.mine keeps a token-balanced share of whole micro-batches."""
+    recs = subsample_all(records, args, f"{args.seed}:{step}")
+    mbs = [recs[i:i + args.bs] for i in range(0, len(recs), args.bs)]
+    costs = [jdist.mb_cost(m, args.max_state_tokens, args.packing == "on") for m in mbs] \
+        if dp.world > 1 else [0] * len(mbs)
+    return [(k, mbs[k]) for k in dp.mine(costs)]
+
+
+def train_stream(tok, train_paths, args):
+    """The training stream: the temperature Mixture (--length-grouping on: wrapped in a
+    LengthGroupedStream), or (--length-curriculum on) a CurriculumStream over
+    steps x bs x grad_accum records drawn like the Mixture."""
+    if args.length_curriculum != "on":
+        mix = Mixture(train_paths, alpha=args.alpha, seed=args.seed)
+        if args.length_grouping != "on":
+            return mix
+        from openjev.packing import LengthGroupedStream, request_lengths
+        print(json.dumps({"length_grouping": {"bs": args.bs, "chunk_mbs": args.group_chunk}}), flush=True)
+        return LengthGroupedStream(mix, lambda recs: request_lengths(tok, recs, args.max_state_tokens),
+                                   args.bs, args.group_chunk, args.seed)
+    from openjev.packing import build_curriculum
+    s = build_curriculum(tok, train_paths, args.steps * args.bs * args.grad_accum, args.max_state_tokens,
+                         args.curriculum_stages, args.alpha, args.seed, args.curriculum_pack_mult)
+    print(json.dumps({"length_curriculum": {"stages": list(s.stages), "records": len(s.records),
+                                            "per_stage": s.stage_counts(), "pool_sha": s.pool_sha,
+                                            "pack_mult": s.pack_mult if args.packing == "on" else 0}}),
+          flush=True)
+    return s
 
 
 # ---------------------------------------------------------------- questions
@@ -192,12 +330,13 @@ def exact_pg_loss(logits, ref_logits, batch, args):
         "reward": torch.stack(rewards).mean().item(), "kl": kl.item(), "soft_ece": float(cal)}
 
 
-def grpo_sample(logits, batch, args):
-    """Sample G actions per question with the current (old) policy."""
+def grpo_sample(logits, batch, args, generator=None):
+    """Sample G actions per question with the current (old) policy. generator: seeded per
+    (step, micro-batch) by main, so the samples do not depend on the rank."""
     out = []
     for l, t, kind in question_views(logits.detach(), batch):
         logp = l.log_softmax(-1)
-        a = torch.multinomial(logp.exp(), args.group, replacement=True)
+        a = torch.multinomial(logp.exp(), args.group, replacement=True, generator=generator)
         r = reward_vector(l.numel(), t, kind, "graded" if args.reward == "graded" else "acc",
                           l.device)[a]
         out.append({"a": a, "old": logp[a], "adv": r - r.mean(), "r": r.mean()})
@@ -265,6 +404,14 @@ def build(args, device, base: str | None = None):
     if len(tok) > rows:
         model.resize_token_embeddings(-(-len(tok) // 128) * 128)
 
+    quant = getattr(args, "quant", "none")
+    if quant != "none":
+        # Before the LoRA wrap, so PEFT wraps the bnb layers. Each layer lands quantized on
+        # `device`; place() below moves the rest. fp16 compute on the T4 (bnb's sm75 path).
+        from openjev.prism import quantize_linears
+        quantize_linears(model._text_backbone(), quant, device, compute_dtype=dtype)
+        log_rss("after_quantize")
+
     if args.grad_ckpt:
         set_grad_ckpt(model, True)
 
@@ -299,7 +446,26 @@ def build(args, device, base: str | None = None):
         from openjev.prism import convert_inplace
         convert_inplace(model.backbone, dtype)   # frozen weights only; in place, per tensor
         log_rss("after_device_convert")
+    if args.init:
+        # A backbone loaded from the checkpoint itself (full fine-tune) holds its PLE table.
+        restore_ple_rows(model, Path(args.init), tok, warn=Path(base_name) != Path(args.init))
     return model, tok, dtype
+
+
+def restore_ple_rows(model, init: Path, tok, warn: bool = True) -> None:
+    """Gemma 4: the --init build resizes the PLE table again, and the resize fills the
+    template rows with its own random init. Paste the rows the checkpoint trained with
+    (ple_rows.pt), after place() and the dtype convert so they land bit-exact. A checkpoint
+    saved before ple_rows.pt existed gets a warning: its template PLE rows differ from the
+    ones it trained with (eval_prism.load_prism replays the seeded build for those)."""
+    from openjev.prism import PLE_ROWS, paste_ple_rows, template_ple_rows
+    from openjev.schema import SPECIAL_TOKENS
+    if (init / PLE_ROWS).exists():
+        paste_ple_rows(model, torch.load(init / PLE_ROWS, map_location="cpu"), str(init))
+    elif warn and template_ple_rows(model, tok.convert_tokens_to_ids(SPECIAL_TOKENS)) is not None:
+        warnings.warn(f"{init} has no {PLE_ROWS} (saved before the PLE persistence fix): the "
+                      "template tokens' PLE rows are the resize's random init, NOT the rows "
+                      "this checkpoint trained with", stacklevel=2)
 
 
 def set_grad_ckpt(model, on: bool) -> None:
@@ -323,10 +489,44 @@ def make_optimizer(model, args):
                              weight_decay=0.0)
 
 
+class FrozenRef:
+    """The RL KL reference = the policy as loaded from --init (SFT), frozen. A snapshot of
+    every trainable tensor (LoRA, flag head, template delta) is taken at construction: build
+    it after build() loads --init and BEFORE a resume restores the RL weights. logits() swaps
+    the snapshot in under no_grad, runs the forward in its own autocast block and swaps the
+    live tensors back. The autocast cast cache is keyed on the parameter, so it is cleared
+    around the swap: a stale fp16 cast of the live weights would otherwise be reused for the
+    reference (KL ~ 0 on the T4) or vice versa. Call it outside the training autocast block."""
+
+    def __init__(self, model):
+        self.model = model
+        self.params = [p for p in model.parameters() if p.requires_grad]
+        self.snap = [p.detach().clone() for p in self.params]
+
+    @torch.no_grad()
+    def logits(self, b, device):
+        live = [p.data for p in self.params]
+        torch.clear_autocast_cache()
+        try:
+            for p, s in zip(self.params, self.snap):
+                p.data = s
+            with autocast(device, self.model):
+                return self.model.flag_logits(b)
+        finally:
+            for p, d in zip(self.params, live):
+                p.data = d
+            torch.clear_autocast_cache()
+
+
+MAX_GRAD_NORM = 1.0
+
+
 def optimizer_step(opt, scaler):
-    """Unscale, clip to 1.0, step, update the scaler, zero the grads. Returns the grad norm."""
+    """Unscale, clip to MAX_GRAD_NORM, step, update the scaler, zero the grads. Returns the
+    grad norm."""
     scaler.unscale_(opt)
-    gnorm = torch.nn.utils.clip_grad_norm_([p for g in opt.param_groups for p in g["params"]], 1.0)
+    gnorm = torch.nn.utils.clip_grad_norm_([p for g in opt.param_groups for p in g["params"]],
+                                           MAX_GRAD_NORM)
     scaler.step(opt)
     scaler.update()
     opt.zero_grad(set_to_none=True)
@@ -362,13 +562,24 @@ def place(model, device, ple_cpu: bool):
 def save(model, tok, args, out_dir):
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    model.backbone.save_pretrained(out)          # LoRA adapter only when peft is used
+    if hasattr(model.backbone, "peft_config"):
+        # LoRA adapter only. Without save_embedding_layers=False PEFT sees the resized
+        # vocab and also stores the whole embedding matrix; embeddings.pt (template rows)
+        # and ple_rows.pt carry everything that differs from the base.
+        model.backbone.save_pretrained(out, save_embedding_layers=False)
+    else:
+        model.backbone.save_pretrained(out)      # full fine-tune: the whole backbone
     tok.save_pretrained(out)
     torch.save(model.flag_head.state_dict(), out / "heads.pt")
+    from openjev.prism import PLE_ROWS, template_ple_rows
     from openjev.schema import SPECIAL_TOKENS
     ids = tok.convert_tokens_to_ids(SPECIAL_TOKENS)
     w = model.get_input_embeddings().weight
-    torch.save({str(i): w[i].detach().cpu() for i in ids}, out / "embeddings.pt")
+    # clone: a view of a CPU tensor would serialize the whole matrix
+    torch.save({str(i): w[i].detach().cpu().clone() for i in ids}, out / "embeddings.pt")
+    ple_rows = template_ple_rows(model, ids)
+    if ple_rows is not None:      # Gemma 4: the template tokens' own (frozen) PLE rows
+        torch.save(ple_rows, out / PLE_ROWS)
     torch.save(model.template_delta.detach().cpu(), out / "template_delta.pt")
     (out / "prism_config.json").write_text(json.dumps(
         {"base": args.model if not args.init else json.loads(
@@ -395,18 +606,14 @@ def evaluate(model, tok, records, args, device):
         for (l, t, kind), src in zip(views, srcs):
             per.setdefault(src, []).append((l.softmax(-1).cpu(), t))
     model.train()
-    rows, all_conf, all_ok, nll = {}, [], [], []
-    for src, items in per.items():
-        acc = sum(int(p.argmax() == t) for p, t in items) / len(items)
-        rows[src] = round(acc, 4)
-        for p, t in items:
-            all_conf.append(p.max().item())
-            all_ok.append(float(p.argmax() == t))
-            nll.append(-math.log(max(p[t].item(), 1e-12)))
-    from openjev.metrics import ece_from_conf
-    return {"acc": round(sum(all_ok) / max(len(all_ok), 1), 4),
-            "nll": round(sum(nll) / max(len(nll), 1), 4),
-            "ece": round(ece_from_conf(all_conf, all_ok), 4), "per_source": rows,
+    # acc (+ 2 SE), nll, 15-bin ECE and Brier per source and overall (openjev.metrics).
+    # per_source stays {source: acc} (TensorBoard, tools/optuna_loop.py); "sources" has the rows.
+    from openjev.metrics import source_metrics
+    m = source_metrics([(p, t, src) for src, items in per.items() for p, t in items], nd=4)
+    o = m["overall"]
+    return {"acc": o["acc"], "nll": o["nll"], "ece": o["ece"], "brier": o["brier"],
+            "n": o["n"], "acc_se2": o["acc_se2"],
+            "per_source": {s: r["acc"] for s, r in m["sources"].items()}, "sources": m["sources"],
             "seq_p95": round(float(np.percentile(lens, 95)), 1) if lens else 0.0,
             "seq_max": int(max(lens)) if lens else 0}
 
@@ -441,19 +648,91 @@ def autocast(device, model):
 
 # ---------------------------------------------------------------- main
 
-def main():
-    args = parse()
-    random.seed(args.seed)
-    torch.manual_seed(args.seed)
+def compile_or_fallback(model, net, tok, records, args, device, dp) -> dict:
+    """--torch-compile: compile the decoder layers, then one forward + backward on `records`
+    (no optimizer step, grads dropped; no_sync under DDP) so a kernel Inductor cannot build fails
+    HERE, not hours into the run. On a compiler error: back to eager on every rank, logged.
+    After a good check, dynamo's suppress_errors is set: a later frame that fails to compile
+    (a new shape) runs eager instead of ending the run."""
+    from openjev import compile as tc
+    info = {"mode": args.torch_compile, "fallback": None}
+    tc.set_torch_compile(model, args.torch_compile, fail_on_limit=False)
+    failed = None
+    with tc.Timer() as t:
+        try:
+            b = prism_collate(tok, records[: args.bs], args.max_state_tokens).to(device)
+            with dp.sync(False):
+                with autocast(device, model):
+                    loss = sft_loss(net(b), b)
+                loss.backward()
+            del b, loss
+        except Exception as e:
+            if not tc.is_compile_error(e):
+                raise
+            failed = f"{type(e).__name__}: {e}"[:300]
+    model.zero_grad(set_to_none=True)
+    if dp.world > 1 and dp.any(failed is not None) and failed is None:
+        failed = "another rank failed to compile"
+    if failed:
+        tc.unset_torch_compile(model)
+        info.update(mode="off", fallback=failed)
+    else:
+        import torch._dynamo
+        torch._dynamo.config.suppress_errors = True
+    info.update(check_s=round(t.s, 1), **(tc.stats() or {}))
+    return info
+
+
+def grpo_generator(device, seed: int, step: int, k: int) -> torch.Generator:
+    """GRPO sampling RNG of micro-batch k of `step`: the same on any rank / world size."""
+    return torch.Generator(device=device).manual_seed(seed * 1_000_003 + step * 1009 + k)
+
+
+def main(argv=None):
+    args = parse(argv)
+    t_start = time.time()                     # --max-minutes clock (model load included)
+    save_dir = Path(args.save_dir)
+    done_file = save_dir / "DONE.json"
+    if args.resume == "auto" and done_file.exists():   # every rank sees it: no collective yet
+        print(json.dumps({"resume": "stage already complete", **json.loads(done_file.read_text())}),
+              flush=True)
+        return
     device = pick_device(args)
-    model, tok, dtype = build(args, device)
+    jdist.init(device)
+    dp = jdist.DataParallel(device, args.sync_mode, args.sync_every)
+    if dp.local_sgd and args.resume != "off":
+        raise SystemExit("--resume needs --sync-mode ddp: local_sgd keeps per-rank optimizer state, "
+                         "which a rank-0 checkpoint does not hold")
+    if args.grad_accum % dp.world:
+        raise SystemExit(f"--grad-accum {args.grad_accum} (global micro-batches per step) "
+                         f"must divide by the {dp.world} ranks")
+    main_rank = dp.rank == 0
+
+    def load():
+        # The same seed on every rank: equal LoRA A, flag head and new embedding rows.
+        random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        return build(args, device)
+    model, tok, dtype = jdist.staggered(load)     # one rank at a time (host RAM peak)
     model.train()
+    net = dp.attach(model)    # training forward; eval, sampling, KL ref and save use `model`
+    accum_local = args.grad_accum // dp.world
+    if dp.world > 1 and main_rank:
+        print(json.dumps({"dist": {"world": dp.world, "sync_mode": args.sync_mode,
+                                   "sync_every": args.sync_every if dp.local_sgd else None,
+                                   "global_batch": args.bs * args.grad_accum,
+                                   "accum_per_rank": accum_local}}), flush=True)
 
     train_paths = sorted(glob.glob(args.train))
     if not train_paths:
         raise SystemExit(f"no train files match {args.train}")
-    mixture = Mixture(train_paths, alpha=args.alpha, seed=args.seed)
+    # The same seeded stream on every rank; step_micro_batches keeps this rank's share.
+    mixture = train_stream(tok, train_paths, args)
     val = load_val(args.val, args.eval_max, args.seed)
+    if args.torch_compile != "off":
+        info = compile_or_fallback(model, net, tok, val, args, device, dp)
+        if main_rank:
+            print(json.dumps({"torch_compile": info}), flush=True)
 
     opt = make_optimizer(model, args)
     warm = max(1, int(args.warmup * args.steps))
@@ -461,17 +740,53 @@ def main():
         opt, lambda s: min(1.0, (s + 1) / warm) * 0.5 * (1 + math.cos(math.pi * min(1.0, s / args.steps))))
     scaler = torch.amp.GradScaler("cuda", enabled=(device == "cuda" and dtype == torch.float16))
     use_ref = args.algo != "sft" and args.lam_kl > 0 or args.algo == "grpo"
+    # Snapshot BEFORE the resume load below: the reference stays the --init (SFT) policy.
+    frozen_ref = FrozenRef(model) if use_ref and args.init and args.lora_r > 0 else None
 
     def ref_logits(b):
+        """Reference logits; call outside the training autocast block (FrozenRef)."""
         if not use_ref:
             return None
-        with torch.no_grad():
+        if frozen_ref is not None:
+            return frozen_ref.logits(b, device)
+        with torch.no_grad(), autocast(device, model):
             if hasattr(model.backbone, "disable_adapter"):
                 with model.backbone.disable_adapter():
                     return model.flag_logits(b)
             return model.flag_logits(b)  # full fine-tune: KL vs self (no-op), use LoRA instead
 
-    tb = make_writer(args)
+    stage = rs.stage_of(args.algo)
+    cfg = rs.config_of(args, train_paths)
+    start, best = 0, float("inf")
+    if args.resume != "off":
+        # Every rank loads the same checkpoint (in place: DDP and AdamW keep their references).
+        path = rs.find_latest(save_dir / "resume") if args.resume == "auto" else Path(args.resume)
+        if path is not None:
+            r = rs.load(path, model=model, opt=opt, sched=sched, scaler=scaler, mixture=mixture,
+                        device=device, cfg=cfg, ignore_config=args.resume_ignore_config)
+            if r["stage"] != stage:
+                raise SystemExit(f"resume: checkpoint stage {r['stage']} != {stage} ({path})")
+            start, best = r["step"], r["best"]
+            dp.steps = start
+            if main_rank:
+                print(json.dumps({"resumed": str(path), "step": start, "best": best,
+                                  "notes": r["notes"]}), flush=True)
+        elif main_rank:
+            print(json.dumps({"resume": "no checkpoint, fresh start", "dir": str(save_dir)}), flush=True)
+        jdist.barrier()
+
+    def checkpoint(step_done):
+        """Collective: every rank calls it; rank 0 writes, the others wait."""
+        dp.average()
+        if main_rank:
+            p = rs.save(save_dir, step=step_done, stage=stage, model=model, opt=opt, sched=sched,
+                        scaler=scaler, mixture=mixture, best=best, cfg=cfg, device=device,
+                        dtype=dtype, keep=args.keep_resume)
+            print(json.dumps({"checkpoint": str(p), "step": step_done,
+                              "min": round((time.time() - t_start) / 60, 1)}), flush=True)
+        jdist.barrier()
+
+    tb = make_writer(args) if main_rank else None
 
     def tb_log(fn):
         if tb is None:
@@ -481,42 +796,64 @@ def main():
         except Exception as e:
             print(f"warning: TensorBoard logging failed ({type(e).__name__}: {e})", flush=True)
 
-    sub_rng = random.Random(f"subsample:{args.seed}")   # own stream: eval never draws from it
-    log = Path(args.save_dir) / "log.jsonl"
-    log.parent.mkdir(parents=True, exist_ok=True)
-    best, t0, bad = float("inf"), time.time(), 0
-    for step in range(args.steps):
+    log = save_dir / "log.jsonl"
+    step_log = save_dir / "train_log.jsonl"   # one row per optimizer step (rank 0's stats)
+    if main_rank:
+        log.parent.mkdir(parents=True, exist_ok=True)
+    t0, bad, stop_reason = time.time(), 0, None
+    step = start - 1
+    for step in range(start, args.steps):
         stats = {}
-        for _ in range(args.grad_accum):
-            b = train_batch(tok, mixture.take(args.bs), args, sub_rng).to(device)
+        mine = step_micro_batches(mixture.take(args.bs * args.grad_accum), args, step, dp)
+        pack_len = getattr(mixture, "pack_len", None)   # length curriculum: per-step stage row
+        for j, (k, recs) in enumerate(mine):
+            last_micro = j == len(mine) - 1
+            b = collate_train(tok, recs, args, pack_len).to(device)
             if args.algo == "grpo":
                 with autocast(device, model):
                     with torch.no_grad():
-                        samples = grpo_sample(model.flag_logits(b), b, args)
-                    ref = ref_logits(b)
-                for _ in range(args.ppo_epochs):
-                    with autocast(device, model):
-                        loss, stats = grpo_loss(model.flag_logits(b), ref, b, samples, args)
-                    scaler.scale(loss / (args.grad_accum * args.ppo_epochs)).backward()
+                        samples = grpo_sample(model.flag_logits(b), b, args,
+                                              grpo_generator(device, args.seed, step, k))
+                ref = ref_logits(b)
+                for e in range(args.ppo_epochs):
+                    with dp.sync(last_micro and e == args.ppo_epochs - 1):
+                        with autocast(device, model):
+                            loss, stats = grpo_loss(net(b), ref, b, samples, args)
+                        scaler.scale(loss / (accum_local * args.ppo_epochs)).backward()
                 continue
-            with autocast(device, model):
-                logits = model.flag_logits(b)
-                if args.algo == "sft":
-                    loss = sft_loss(logits, b)
-                    stats = {"ce": loss.item()}
-                else:
-                    loss, stats = exact_pg_loss(logits, ref_logits(b), b, args)
-            scaler.scale(loss / args.grad_accum).backward()
+            ref = ref_logits(b) if args.algo != "sft" else None   # before the training autocast
+            with dp.sync(last_micro):
+                with autocast(device, model):
+                    logits = net(b)
+                    if args.algo == "sft":
+                        loss = sft_loss(logits, b)
+                        stats = {"ce": loss.item()}
+                    else:
+                        loss, stats = exact_pg_loss(logits, ref, b, args)
+                scaler.scale(loss / accum_local).backward()
         gnorm = optimizer_step(opt, scaler)
         sched.step()
+        dp.after_step()                        # local_sgd: average every --sync-every steps
 
         last = stats.get("ce", stats.get("reward", 0.0))
+        if dp.world > 1:                       # every rank takes the same exit decision
+            last = dp.mean([last])[0]
         bad = bad + 1 if not math.isfinite(last) else 0
         if bad >= 20:
             raise SystemExit(f"loss not finite for 20 steps (step {step}): {stats}. "
                              "Likely fp16 overflow; try --dtype fp32 or a bf16 GPU.")
+        if main_rank:
+            with open(step_log, "a") as f:
+                f.write(json.dumps({"step": step, "t": round(time.time() - t_start, 2),
+                                    "seq_len": int(b.input_ids.shape[1]), "grad_norm": float(gnorm),
+                                    "scale": scaler.get_scale() if scaler.is_enabled() else None,
+                                    **{k: float(v) for k, v in stats.items()}}) + "\n")
         if step % 10 == 0:
-            print(json.dumps({"step": step, "sec": round(time.time() - t0), **stats}), flush=True)
+            if dp.world > 1 and stats:         # mean over the ranks (collective: every rank)
+                stats = dict(zip(stats, dp.mean(list(stats.values()))))
+            cur = {"stage": mixture.stages[mixture.stage]} if hasattr(mixture, "stage") else {}
+            if main_rank:
+                print(json.dumps({"step": step, "sec": round(time.time() - t0), **stats, **cur}), flush=True)
 
             def _log_train():
                 for k, v in stats.items():
@@ -529,23 +866,51 @@ def main():
                 tb.add_scalar("data/seq_len", b.input_ids.shape[1], step)
             tb_log(_log_train)
         if (step + 1) % args.eval_every == 0 or step + 1 == args.steps:
-            m = evaluate(model, tok, val, args, device)
-            print(json.dumps({"step": step + 1, "val": m}), flush=True)
-            with open(log, "a") as f:
-                f.write(json.dumps({"step": step + 1, **m}) + "\n")
+            dp.average()                       # local_sgd: eval / save the averaged weights
+            if main_rank:
+                m = evaluate(model, tok, val, args, device)
+                print(json.dumps({"step": step + 1, "val": m}), flush=True)
+                with open(log, "a") as f:
+                    f.write(json.dumps({"step": step + 1, **m}) + "\n")
 
-            def _log_val():
-                for k in ("acc", "nll", "ece"):
-                    tb.add_scalar(f"val/{k}", m[k], step + 1)
-                for src, v in m["per_source"].items():
-                    tb.add_scalar(f"val_source/{src}", v, step + 1)
-                tb.flush()
-            tb_log(_log_val)
-            if m["nll"] < best:
-                best = m["nll"]
-                save(model, tok, args, Path(args.save_dir) / "best")
-    save(model, tok, args, Path(args.save_dir) / "last")
+                def _log_val():
+                    for k in ("acc", "nll", "ece"):
+                        tb.add_scalar(f"val/{k}", m[k], step + 1)
+                    for src, v in m["per_source"].items():
+                        tb.add_scalar(f"val_source/{src}", v, step + 1)
+                    tb.flush()
+                tb_log(_log_val)
+                if m["nll"] < best:
+                    best = m["nll"]
+                    save(model, tok, args, Path(args.save_dir) / "best")
+            jdist.barrier()                    # the other ranks wait for rank 0's eval / save
+        # Session control: step budget (tests), time budget, periodic resume checkpoints.
+        if step + 1 < args.steps:
+            if args.session_steps and step + 1 - start >= args.session_steps:
+                stop_reason = "session_steps"
+            elif args.max_minutes and dp.any(main_rank and time.time() - t_start >= args.max_minutes * 60):
+                stop_reason = "max_minutes"    # rank 0's clock decides for every rank (collective)
+            if stop_reason:
+                break
+            if args.save_every and (step + 1) % args.save_every == 0:
+                checkpoint(step + 1)
+    end = step + 1
+    if end > start:
+        checkpoint(end)
+    if main_rank:
+        save(model, tok, args, save_dir / "last")
+        if stop_reason:
+            print(json.dumps({"stopped": stop_reason, "step": end, "of": args.steps,
+                              "resume": f"--resume auto --save-dir {save_dir}"}), flush=True)
+        else:
+            done_file.write_text(json.dumps({"stage": stage, "step": end, "best": best,
+                                             "time": time.time()}))
+            print(json.dumps({"done": stage, "step": end, "best": best}), flush=True)
+        if args.torch_compile != "off":
+            from openjev import compile as tc
+            print(json.dumps({"torch_compile_end": tc.stats()}), flush=True)
     tb_log(lambda: tb.close())
+    jdist.cleanup()
 
 
 if __name__ == "__main__":

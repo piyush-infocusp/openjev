@@ -1,0 +1,2 @@
+- 2026-11-20 tick: r5 ingested (packing 1024 = 1.38 samples/s, 6.2x). Kernel idle. r6 waits on QLoRA code + user approval of the r6 GitHub issue (new rule: issue before each round). Parallel: DDP/local SGD, packing freeze, length curriculum, TPU r1.
+- 2026-11-23 tick: r7 (v3 bench set) done: DDP 2xT4 2.62 wtd samples/s (0.38 s/sample, ~11.8x vs 4.5), 1.92x over 1 GPU; local SGD same. Posted on issue #2. r8 (torch.compile) waits on the compile agent + user issue approval.

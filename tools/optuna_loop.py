@@ -73,7 +73,7 @@ from optuna.trial import TrialState
 
 ROOT = Path(__file__).resolve().parent.parent
 BASELINE_S_PER_SAMPLE = 4.5
-STUDY_NAME = "openjev-speed-v2"       # default; the yaml `study_name` wins
+STUDY_NAME = "openjev-speed-v3"       # default; the yaml `study_name` wins (v2: rounds 3-6)
 # Rounds 1-2 (old mask, variable bs). The original "openjev-speed" was copied to LEGACY_STUDY
 # in runs/optuna/study.db; both names are treated as legacy (annotate --backfill).
 LEGACY_STUDY = "LEGACY-r1-r2 (old mask, variable bs; not comparable)"
@@ -128,7 +128,17 @@ def load_round(path) -> int:
 
 
 SETTING_KEYS = ("global_batch", "micro_batch", "warmup_steps", "timed_steps", "diag_mb",
-                "trial_stream_len", "probe_n", "validate_every", "validate_steps", "val_per_source")
+                "trial_stream_len", "probe_n", "validate_every", "validate_steps", "val_per_source",
+                "bench_set")
+
+
+def bench_set_path(st: dict):
+    """The fixed multi-length bench set of the study (yaml `bench_set`, relative to the repo
+    root), or None for a trial-stream study (v2)."""
+    if not st.get("bench_set"):
+        return None
+    p = Path(st["bench_set"])
+    return p if p.is_absolute() else ROOT / p
 
 
 def load_settings(path) -> dict:
@@ -143,14 +153,22 @@ def load_settings(path) -> dict:
     return st
 
 
-def bench_settings(st: dict, stream_sha=None) -> dict:
+def bench_settings(st: dict, stream_sha=None, bench_sha=None) -> dict:
     """The study settings bench_trials needs, written into every trials.json entry."""
     if not st.get("global_batch"):
         return {}
     out = {k: st[k] for k in ("global_batch", "micro_batch", "warmup_steps", "timed_steps") if k in st}
-    if stream_sha:
+    if bench_sha:                     # v3+: the bench set replaces the trial stream
+        out["bench_set_sha"] = bench_sha
+    elif stream_sha:
         out["trial_stream_sha"] = stream_sha
     return out
+
+
+def layout_sha_of(stream_path):
+    """sha of runs/optuna/packed_layout.json next to the frozen stream, None if absent."""
+    p = Path(stream_path).with_name("packed_layout.json")
+    return json.loads(p.read_text()).get("sha") if p.exists() else None
 
 
 def read_frozen(path):
@@ -320,11 +338,16 @@ def short_sha(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:10]
 
 
-def fixed_conditions(dims, st: dict, stream_sha=None, val_sha=None) -> dict:
+def fixed_conditions(dims, st: dict, stream_sha=None, val_sha=None, layout_sha=None, bench_sha=None) -> dict:
     """Everything held constant in this round (study note, study attr `fixed_conditions`).
-    Its short hash is the per-trial attr fixed_conditions_version."""
+    Its short hash is the per-trial attr fixed_conditions_version. bench_sha (v3+): the fixed
+    multi-length bench set replaces the trial stream and the packing condition (packing and
+    pack_len stay train_prism flags, not trial conditions)."""
     impl = implemented(dims)
     fixed = {d["name"]: d["default"] for d in impl if not d["sample"]}
+    if bench_sha:
+        for k in ("packing", "pack_len", "max_state_tokens"):
+            fixed.pop(k, None)
     sampled = {d["name"]: d.get("choices", [d.get("low"), d.get("high")]) for d in impl if d["sample"]}
     gb, mb = st.get("global_batch"), st.get("micro_batch")
     c = {
@@ -348,6 +371,11 @@ def fixed_conditions(dims, st: dict, stream_sha=None, val_sha=None) -> dict:
                 "base weights and embeddings frozen, fp32 template delta for the template tokens; "
                 "every trainable tensor fp32",
         "trial_stream_sha": stream_sha,
+        "packing": f"FROZEN data condition (not a search dim): packing {fixed.get('packing')}, pack_len "
+                   f"{fixed.get('pack_len')}; the packed row layout of the frozen stream (micro-batches of "
+                   f"{mb}) is frozen in runs/optuna/packed_layout.json (tools/freeze_packed.py), "
+                   "packed_layout_sha below (none = packed on the fly, same rows); eval stays unpacked",
+        "packed_layout_sha": layout_sha,
         "val_set_sha": val_sha,
         "timing": (f"{st.get('warmup_steps', 1)} warm-up optimizer step(s), then {st.get('timed_steps')} timed "
                    "optimizer steps on the same frozen records (TRIAL_SECONDS is not used for timing)"
@@ -361,6 +389,23 @@ def fixed_conditions(dims, st: dict, stream_sha=None, val_sha=None) -> dict:
         "hardware": "Kaggle 2x T4 (single-process bench: one GPU until DDP)",
         "rounds": ROUND_HISTORY,
     }
+    if bench_sha:
+        _, b = read_frozen(bench_set_path(st))
+        w = ", ".join(f"<={k} {100 * v:.1f}%" for k, v in (b or {}).get("weights", {}).items())
+        mst = (b or {}).get("max_state_tokens")
+        for k in ("trial_stream_sha", "packing", "packed_layout_sha"):
+            c.pop(k)
+        c["max_state_tokens"] = f"bench set: {mst} (the set is bucketed there; overrides the param)"
+        c["bench_set"] = (f"FIXED multi-length bench set (user decision 2026-11-23, no single pack_len): "
+                          f"{(b or {}).get('n_per_bucket')} uncut train records per length bucket "
+                          f"{(b or {}).get('stages')}, stratified by source, unpacked (packing at the "
+                          f"bucket max = unpacked), tools/length_curriculum.py bench")
+        c["bench_set_sha"] = bench_sha
+        c["objective"] = (f"weighted samples/s = 1 / sum_b w_b x (s per sample in bucket b); w = share of "
+                          f"training steps per bucket under the Mixture: {w}")
+        c["timing"] = (f"{st.get('warmup_steps', 1)} shared warm-up optimizer step(s) (one micro-batch per "
+                       f"bucket, longest first), then per bucket (128 -> 2048) {st.get('timed_steps')} timed "
+                       f"optimizer step(s) of that bucket's records; OOM in any bucket = PRUNED")
     return c
 
 
@@ -391,6 +436,12 @@ def study_note(rnd: int, st=None, conditions=None, name: str = STUDY_NAME) -> st
                 f"Each trial: {st.get('warmup_steps', 1)} warm-up optimizer step(s), then "
                 f"{st.get('timed_steps')} timed optimizer steps on the frozen trial stream (same records "
                 "for every trial), from the same start weights")
+        if st.get("bench_set"):
+            what = (f"objective = WEIGHTED samples/s over the fixed multi-length bench set (buckets <=128 .. "
+                    f"<=2048, unpacked) at a FIXED micro-batch {mb} and global batch {gb}: per bucket "
+                    f"{st.get('timed_steps')} timed optimizer step(s) of that bucket's records; samples/s = "
+                    "1 / sum_b w_b x s per sample in bucket b, w = share of training steps per bucket. "
+                    f"Out of memory in any bucket = PRUNED infeasible_at_mb{mb}")
         guard = ("the probe loss on a fixed set is measured before training and after the warm-up "
                  f"optimizer steps (same steps, same {gb}-sample batches for every trial, so guards are "
                  "comparable across trials)")
@@ -531,28 +582,35 @@ def append_result(study, number: int):
 # ---------------------------------------------------------------- propose
 
 def frozen_shas(a, study, st: dict):
-    """(stream_sha, val_sha) for round 3+ settings: the frozen files must exist (`freeze`)
-    and match what the study already recorded (frozen once per study)."""
+    """(stream_sha, val_sha, bench_sha) for round 3+ settings: the frozen files must exist
+    (`freeze`; v3+: the bench set, tools/length_curriculum.py bench, instead of the trial
+    stream) and match what the study already recorded (frozen once per study)."""
     if not st.get("global_batch"):
-        return None, None
-    stream_sha, _ = read_frozen(a.stream)
+        return None, None, None
+    bpath = bench_set_path(st)
+    bench_sha = read_frozen(bpath)[0] if bpath else None
+    if bpath and bench_sha is None:
+        raise SystemExit(f"no bench set {bpath}: run `tools/length_curriculum.py bench` once for this study")
+    stream_sha = None if bpath else read_frozen(a.stream)[0]
     val_sha, _ = read_frozen(a.val_set)
-    if stream_sha is None or val_sha is None:
+    if (stream_sha is None and not bpath) or val_sha is None:
         raise SystemExit(f"no frozen trial data ({a.stream}, {a.val_set}): run "
                          "`tools/optuna_loop.py freeze` once for this study first")
-    for key, sha in (("trial_stream_sha", stream_sha), ("val_set_sha", val_sha)):
+    for key, sha in (("trial_stream_sha", stream_sha), ("val_set_sha", val_sha), ("bench_set_sha", bench_sha)):
+        if sha is None:
+            continue
         old = study.user_attrs.get(key)
         if old and old != sha:
             raise SystemExit(f"{key}: the study was run on {old}, the file is {sha}. The frozen "
                              "data must not change within a study (restore the file).")
-    return stream_sha, val_sha
+    return stream_sha, val_sha, bench_sha
 
 
 def cmd_propose(a):
     dims = load_space(a.space)
     st = load_settings(a.space)
     study = open_study(a.db, a.seed, a.study)
-    stream_sha, val_sha = frozen_shas(a, study, st)
+    stream_sha, val_sha, bench_sha = frozen_shas(a, study, st)
     running = [t for t in study.get_trials(deepcopy=False) if t.state == TrialState.RUNNING]
     if running:
         nums = [t.number for t in running]
@@ -573,10 +631,15 @@ def cmd_propose(a):
     # Trial 0 is the baseline. Re-enqueue it if every baseline so far failed or was abandoned.
     alive = (TrialState.COMPLETE, TrialState.RUNNING, TrialState.WAITING)
     rnd = load_round(a.space)
-    conditions = fixed_conditions(dims, st, stream_sha, val_sha) if st.get("global_batch") else None
+    conditions = (fixed_conditions(dims, st, stream_sha, val_sha,
+                                   None if bench_sha else layout_sha_of(a.stream), bench_sha)
+                  if st.get("global_batch") else None)
     cver = short_sha(conditions) if conditions else None
     if stream_sha:
         study.set_user_attr("trial_stream_sha", stream_sha)
+    if bench_sha:
+        study.set_user_attr("bench_set_sha", bench_sha)
+    if val_sha:
         study.set_user_attr("val_set_sha", val_sha)
     set_study_meta(study, impl, rnd, st, conditions)
     need_base = not any(t.user_attrs.get("is_baseline") and t.state in alive
@@ -601,7 +664,7 @@ def cmd_propose(a):
                                         "hypothesis": meta.get("hypothesis", ""),
                                         "reference": meta.get("reference", "")})
     commit = git_commit()
-    bset = bench_settings(st, stream_sha)
+    bset = bench_settings(st, stream_sha, bench_sha)
     out = []
     # The baseline (when it is enqueued) counts toward --n; the --enqueue-json configs do not.
     for _ in range(max(a.n, int(need_base)) + len(queued)):
@@ -661,7 +724,9 @@ ATTRS = ("samples_per_sec", "tokens_per_sec", "padded_tokens_per_sec", "pad_frac
          "error", "group_load_s", "attn_backend", "warmup_s", "is_profile", "profile",
          "sdpa_kernels", "graphs_in_timed_loop", "dtype", "mb_used", "grad_accum", "global_batch",
          "fixed_mb", "bs_ignored", "mb_diag", "timed_steps", "warmup_ids_sha", "data_ids_sha",
-         "records_used", "trial_stream_sha", "stream_wrapped", "warmup_retries", "rows_per_mb")
+         "records_used", "trial_stream_sha", "stream_wrapped", "warmup_retries", "rows_per_mb",
+         "bench_set_sha", "buckets", "bench_weights", "max_state_tokens_used", "pack_len_used",
+         "warmup_buckets")
 PRUNE_STATUS = {"oom", "nan", "unsupported"}
 
 
@@ -998,8 +1063,12 @@ def cmd_annotate(a):
         st = load_settings(a.space)
         cond = None
         if st.get("global_batch"):
-            cond = fixed_conditions(dims, st, study.user_attrs.get("trial_stream_sha") or read_frozen(a.stream)[0],
-                                    study.user_attrs.get("val_set_sha") or read_frozen(a.val_set)[0])
+            bsha = (study.user_attrs.get("bench_set_sha") or read_frozen(bench_set_path(st))[0]) \
+                if bench_set_path(st) else None
+            cond = fixed_conditions(dims, st, None if bsha else
+                                    (study.user_attrs.get("trial_stream_sha") or read_frozen(a.stream)[0]),
+                                    study.user_attrs.get("val_set_sha") or read_frozen(a.val_set)[0],
+                                    None if bsha else layout_sha_of(a.stream), bsha)
         set_study_meta(study, impl, rnd, st, cond)
         if rnd >= 2 and study.study_name in LEGACY_STUDIES and "search_space_round_1" not in study.user_attrs:
             old = [dict(d, default=1) if d["name"] == "ple_cpu" else d for d in impl
@@ -1140,7 +1209,9 @@ def cmd_report(a):
     how = (f"Round {rnd}: every trial runs at a FIXED micro-batch {st['micro_batch']} and global batch "
            f"{st['global_batch']} (grad_accum {st['global_batch'] // st['micro_batch']}); a step is one "
            f"optimizer step of {st['global_batch']} samples. {st.get('warmup_steps', 1)} warm-up step(s), then "
-           f"{st.get('timed_steps')} timed steps on the frozen trial stream (same records for every trial), "
+           f"{st.get('timed_steps')} timed steps "
+           + ("PER LENGTH BUCKET of the fixed bench set (objective = weighted samples/s), "
+              if st.get("bench_set") else "on the frozen trial stream (same records for every trial), ") +
            "from the same start weights. OOM at that micro-batch = pruned (infeasible_at_mb). The quality "
            "guard uses the probe loss after the warm-up steps (same steps and batches for every trial, so "
            "guards are comparable across trials)." if st.get("global_batch") else

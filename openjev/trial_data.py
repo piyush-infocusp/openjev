@@ -214,3 +214,29 @@ class FixedStream:
 def write_json(path, obj) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(obj, indent=None, separators=(",", ":")) + "\n")
+
+
+def verify_layout(layout: dict, stream_sha=None, n_records=None) -> dict:
+    """Raise ValueError unless the layout is intact (sha, stream, every micro-batch a partition)."""
+    body = {k: v for k, v in layout.items() if k != "sha"}
+    if sha_of(body) != layout.get("sha"):
+        raise ValueError("packed layout content does not match its sha")
+    if stream_sha is not None and layout["stream_sha"] != stream_sha:
+        raise ValueError(f"packed layout is for trial stream {layout['stream_sha']}, not {stream_sha}")
+    mb = layout["micro_batch"]
+    if n_records is not None and layout["n_records"] != n_records:
+        raise ValueError(f"packed layout covers {layout['n_records']} records, stream has {n_records}")
+    if len(layout["mbs"]) * mb != layout["n_records"]:
+        raise ValueError("packed layout micro-batch count does not cover the stream")
+    for i, rows in enumerate(layout["mbs"]):
+        if sorted(j for r in rows for j in r) != list(range(mb)):
+            raise ValueError(f"packed layout micro-batch {i} is not a partition of its {mb} records")
+    return layout
+
+
+def load_layout(path, stream_sha=None, n_records=None):
+    """The verified layout dict, or None if the file does not exist."""
+    p = Path(path)
+    if not p.exists():
+        return None
+    return verify_layout(json.loads(p.read_text()), stream_sha, n_records)

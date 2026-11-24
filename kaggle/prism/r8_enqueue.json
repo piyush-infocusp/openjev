@@ -1,0 +1,26 @@
+[
+ {
+  "ddp": "on",
+  "sync_mode": "ddp",
+  "torch_compile": "off",
+  "_idea": "r8 OJ-079 control: compile off on the r7 best real config (DDP 2xT4, gradient all-reduce; r7 trial 1, 2.621 samples/s; local SGD trial 2 was 0.8% faster but never averaged inside the timed loop)",
+  "_hypothesis": "repeats r7 trial 1 within noise; the paired reference for the two compiled trials",
+  "_reference": "Li et al. 2020, PyTorch Distributed, arXiv:2006.15704"
+ },
+ {
+  "ddp": "on",
+  "sync_mode": "ddp",
+  "torch_compile": "default",
+  "_idea": "r8 OJ-079: torch.compile (Inductor, dynamic shapes) of the decoder layers only, DDP 2xT4",
+  "_hypothesis": "fuses the elementwise ops (mul 15%, copy_ 12.5% of T4 CUDA time) for ~10-20% weighted samples/s; compile_s (minutes, per rank) recorded apart; 'unsupported' if Triton needs > 64 KB smem on sm75 (head_dim 256/512)",
+  "_reference": "Ansel et al. 2024, PyTorch 2, ASPLOS: https://pytorch.org/assets/pytorch2-2.pdf"
+ },
+ {
+  "ddp": "on",
+  "sync_mode": "ddp",
+  "torch_compile": "reduce-overhead",
+  "_idea": "r8 OJ-079: torch.compile mode=reduce-overhead (Inductor + CUDA graphs) of the decoder layers, DDP 2xT4",
+  "_hypothesis": "adds launch-overhead removal on top of default; one CUDA graph recording per (rows, T) shape costs memory, and CUDA graphs + grad-checkpoint recompute may fail (then 'unsupported')",
+  "_reference": "PyTorch torch.compile mode=reduce-overhead (CUDA graph trees) docs"
+ }
+]

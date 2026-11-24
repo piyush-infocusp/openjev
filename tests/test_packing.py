@@ -131,8 +131,34 @@ def test_train_flags():
     a = tp.parse(["--packing", "on", "--pack-len", "1024"])
     assert a.packing == "on" and a.pack_len == 1024
     d = tp.parse([])
-    assert d.packing == "off" and d.pack_len == 2048
+    assert d.packing == "off" and d.pack_len == 1024   # off by default (user, 2026-11-24)
     with pytest.raises(SystemExit):
         tp.parse(["--packing", "on", "--causal"])
     with pytest.raises(SystemExit):
         tp.parse(["--pack-len", "0"])
+
+
+def test_frozen_layout(tok, tmp_path):
+    """tools/freeze_packed.py: layout = pack_rows per micro-batch, sha verified, and a collate
+    with the frozen rows equals the on-the-fly packed one."""
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+    import freeze_packed as fp
+    from openjev import trial_data as td
+    recs = records() * 2
+    mb = len(recs) // 2
+    lay = fp.build_layout(tok, recs, "abc", pack_len=PACK, micro_batch=mb, max_state_tokens=2048)
+    assert len(lay["mbs"]) == 2 and td.verify_layout(lay, "abc", len(recs)) is lay
+    on_fly = prism_collate(tok, recs[:mb], 2048, pack_len=PACK)
+    frozen = prism_collate(tok, recs[:mb], 2048, pack_len=PACK, rows_of=lay["mbs"][0])
+    assert torch.equal(on_fly.input_ids, frozen.input_ids) and torch.equal(on_fly.doc, frozen.doc)
+    p = tmp_path / "packed_layout.json"
+    td.write_json(p, lay)
+    assert td.load_layout(p, "abc", len(recs))["sha"] == lay["sha"]
+    assert td.load_layout(tmp_path / "none.json") is None
+    lay["mbs"][0] = [[0]]
+    with pytest.raises(ValueError):
+        td.verify_layout(lay)
+    with pytest.raises(ValueError):
+        prism_collate(tok, recs[:mb], 2048, rows_of=[[0]])
